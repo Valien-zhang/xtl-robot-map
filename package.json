@@ -1,0 +1,37 @@
+{
+  "name": "xtl-robot-map",
+  "version": "1.0.0",
+  "description": "xtl-robot-map",
+  "main": "dist/dip-utils.cjs.js",
+  "module": "dist/dip-utils.esm.js",
+  "browser": "dist/dip-utils.umd.js",
+  "types": "src/index.d.ts",
+  "files": [
+    "src",
+    "dist/*.js"
+  ],
+  "scripts": {
+    "dev": "rollup -w -c",
+    "build": "rollup -c"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Valien-zhang/xtl-robot-map.git"
+  },
+  "keywords": [
+    "xtl-robot-map"
+  ],
+  "author": "ValienZH <18120184391@163.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Valien-zhang/xtl-robot-map/issues"
+  },
+  "homepage": "https://github.com/Valien-zhang/xtl-robot-map#readme",
+  "devDependencies": {
+    "@rollup/plugin-typescript": "^11.1.6",
+    "@types/node": "^22.2.0",
+    "rollup": "^4.20.0",
+    "rollup-plugin-node-resolve": "^5.2.0",
+    "tslib": "^2.6.3"
+  }
+}
