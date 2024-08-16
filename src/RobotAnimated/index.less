@@ -1,0 +1,80 @@
+.rootView {
+  position: relative;
+
+  .img {
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: 500;
+    width: 22px !important;
+    height: 22px !important;
+  }
+
+  .divBox {
+    width: 22px;
+    height: 22px;
+  
+    /* 扩散动画 */
+    .cir1 {
+      width: 22px;
+      height: 22px;
+      background: rgba(33, 131, 227, 0.2);
+      border: 1px solid rgba(64, 160, 255, 0.5);
+      border-radius: 22px;
+      position: absolute;
+      left: 0;
+      top: 0;
+      z-index: 10;
+    }
+  
+    .cir1 {
+      /* animation: circleChange 2s 1s ease-out infinite; */
+      animation-name: circleChange;
+      animation-duration: 2s;
+      animation-iteration-count: infinite;
+      animation-timing-function: linear;
+    }
+  
+    .chargeStatus {
+      background: rgba(0,255,0,0.2);
+      border-color: rgba(0,255,0,0.5);
+    }
+  
+    .lowStatus {
+      background: rgba(255,0,0,0.2);
+      border-color: rgba(255,0,0,0.5);
+    }
+  
+    .errStatus {
+      background: rgba(255,0,255,0.2);
+      border-color: rgba(255,0,255,0.5);
+    }
+  
+    // .circle1 {
+    //   animation-delay: 1s;
+    // }
+  
+  
+    @keyframes circleChange {
+      0% {
+        transform: scale(1);
+      }
+  
+      25% {
+        transform: scale(1.1);
+      }
+  
+      50% {
+        transform: scale(1.15);
+      }
+  
+      75% {
+        transform: scale(1.2);
+      }
+  
+      100% {
+        transform: scale(1.25);
+      }
+    }
+  }
+}

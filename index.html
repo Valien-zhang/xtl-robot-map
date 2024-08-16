@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robot Map</title>
+</head>
+
+<body>
+    <div id="map-container" style="width: 100%; height: 100vh;"></div>
+    <script src="https://unpkg.com/react/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="dist/robotMap.umd.js"></script>
+    <script>
+        // 使用 MapView 组件
+        const mapContainer = document.getElementById('map-container');
+        ReactDOM.render(
+            React.createElement(robotMap, {
+                mapId: 'myMap',
+                workState: 1,
+                isShowPath: true,
+                // 传递其他必要的 props
+            }),
+            mapContainer
+        );
+    </script>
+</body>
+
+</html>
