@@ -11,7 +11,6 @@ import livereload from 'rollup-plugin-livereload';
 import replace from '@rollup/plugin-replace';
 
 
-
 export default {
     input: './src/index.jsx', // 入口文件
     output: [
@@ -65,6 +64,6 @@ export default {
         }),
         livereload('dist'),
     ],
-    external: ['react', 'mobx-react-lite'], // 将这些库排除在打包之外
+    external: ['react'], // 将这些库排除在打包之外
 
 }

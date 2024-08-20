@@ -1,0 +1,16 @@
+node_modules/
+**/node_modules/
+
+dist/
+
+eslint-mihome-plugin/
+
+**/*.png
+
+!*.js
+!**/*.js
+
+!*.jsx
+!**/*.jsx
+
+**/*.json

@@ -28,7 +28,7 @@ export default function robotAnimated(status, phi) {
       <img
         class="img"
         style="transform: rotate(${phi}deg)"
-        src=${require('../assets/img/jiqiren.png')}
+        src=${'../assets/img/jiqiren.png'}
       />
     </div>
   `

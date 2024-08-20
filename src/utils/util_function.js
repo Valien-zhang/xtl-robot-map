@@ -651,3 +651,23 @@ export function perfectMapData(mapData, sizeX, sizeY, mapPerfectScale) {
 		return [];
 	}
 }
+
+export function isNull(variable) {
+	if (variable === null || variable === undefined) {
+		return true;
+	}
+	if (typeof variable === 'string' && variable.trim() === '') {
+		return true;
+	}
+	if (Array.isArray(variable) && variable.length === 0) {
+		return true;
+	}
+	if (typeof variable === 'object' && Object.keys(variable).length === 0) {
+		return true;
+	}
+	return false;
+}
+
+export function isNumber(obj) {
+	return typeof obj === 'number' && !isNaN(obj);
+}

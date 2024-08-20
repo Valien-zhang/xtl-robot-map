@@ -413,3 +413,11 @@ export const REAL_WORK_MODE = {
  * 原来是1分钟，海尔特别强调要15分钟，主要关注首页地图加载速度
  */
 export const LOCAL_CACHE_VALID_TIME = 15000;
+
+export function isIOS() {
+  let u = navigator.userAgent;
+  return Boolean(u.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/));
+}
+
+
+export const bottomBarHeight = isIOS() ? 120 : 94; // 底部的按钮栏高度
