@@ -1,17 +1,18 @@
 import logger from './logger';
 import _ from 'lodash';
 import storage from './localStorage';
-import { perfectMapData, Uint8ToPNGBase64 } from './util_function';
+import { SMapColorConfig } from './constants';
+import { getMapDataPoints, perfectMapData, Uint8ToPNGBase64 } from './util_function';
 
 /**
  * 地图坐标转换为 x上y右  笛卡尔坐标 y上 x右 
  */
-export function mapToCRSLatLng({ x, y }) {
-    return { x: y, y: x };
+export function mapToCRSLatLng([x, y]) {
+    return [y, x];
 }
 
-export function CRSLatLngToMap({ x, y }) {
-    return { x: y, y: x };
+export function CRSLatLngToMap([x, y]) {
+    return [y, x];
 }
 
 /**
@@ -24,112 +25,113 @@ export function isMapEmpty(mapData) {
     return false;
 }
 
-const mapConfig = Object.freeze({
-    mapColor: {
-        defaultColor: {
-            "0": '#00000000', // 背景
-            "1": '#CC6D7D7D', // 墙 6D7D7D 80%s
-            "2": '#FFD6E4E4'// 发现区域E1EEEE #D6E4E4
-        },
-        originMapColors: [
-            '#FFBFE8E4', // 绿
-            '#FFF1E5B6', // 黄
-            '#FFC5DAF6', // 蓝
-            '#FFF4CDBD'// 红
-        ],
-        highlightMapColors: [
-            '#FF2CD5AE',
-            '#FFEDC357',
-            '#FF7AAFF5',
-            '#FFEA6025'
-        ],
-        originMapColor: '#FFE1E5E9'
+/**
+ * 根据地图数据, 生成配色
+ * @param {*} areas 
+ * @returns 
+ */
+// const colorMapping = (areas) => {
+//     const transformedColorMapping = {};
+//     if (areas.length <= 4) { // 小于4个图形 或未保存图, 直接配色
+//         areas.forEach((item, index) => {
+//             const roomId = item.room_id ?? (item.id + 2);
+//             const key = `${roomId}`;
+//             transformedColorMapping[key] = SMapColorConfig.roomColors[index % 4];
+//         });
+//     } else { // 多于4个图形, 使用四色定理配色
+//         const graph = colorGraph(areas.map((item) => ({
+//             [item.room_id ?? (item.id + 2)]: (item.neibs ?? [])
+//         })));
+//         logger.d('配色:', graph);
+//         Object.entries(graph).forEach(([key, value]) => {
+//             transformedColorMapping[key] = SMapColorConfig.roomColors[value];
+//         });
+//     }
+//     return transformedColorMapping;
+// };
+
+export async function fetchMapImage({ perfectScale, mapId, map, lz4Len, minX, minY, sizeX, sizeY, roomInfos }) {
+
+    const mapPoints = getMapDataPoints(map, lz4Len);
+    const zeroNums = mapPoints.filter((item) => item === 0).length;
+    const MAP_CACHE_KEY = `mapCache-${mapId}-${minX}-${minY}-${sizeX}-${sizeY}-${JSON.stringify(roomInfos)}-${zeroNums}`;
+    // room.color : 1234
+    let roomColor = {};
+    roomInfos.forEach((room) => {
+        let index = room.color;
+        if (index > SMapColorConfig.roomColors.length) {
+            index = index % SMapColorConfig.roomColors.length;
+        }
+        index--;
+        roomColor[room.id] = SMapColorConfig.roomColors[index];
+    });
+    const mapColor = {
+        ...roomColor,
+        "0": SMapColorConfig.bgColor,
+        "1": SMapColorConfig.wallColor,
+        "2": SMapColorConfig.discoverColor
     }
-});
 
-const colorMapping = (areas) => {
-    logger.d('重新生成地图配色数据', areas);
-    const { highlightMapColors, originMapColors, defaultColor } = mapConfig.mapColor;
-    // 注意深拷贝
-    const transformedColorMapping = _.cloneDeep(defaultColor);
-
-    if (areas.length <= 4) { // 小于4个图形 或未保存图, 直接配色
-        areas.forEach((item, index) => {
-            const roomId = item.room_id ?? (item.id + 2);
-            const key = `${roomId}`;
-            const colors = originMapColors;
-            transformedColorMapping[key] = colors[index % 4];
-        });
-        // logger.d('重新生成地图配色数据 <= 4', transformedColorMapping);
-
-    } else { // 多于4个图形, 使用四色定理配色
-        logger.d('重新生成地图配色数据1', typeof areas);
-        areas.map((item) => ({
-            [item.room_id ?? (item.id + 2)]: (item.neibs ?? [])
-        }))
-
-        const graph = colorGraph();
-        // logger.d('配色:', graph);
-        Object.entries(graph).forEach(([key, value]) => {
-            const colors = originMapColors;
-            transformedColorMapping[key] = colors[value];
-        });
-    }
-    return transformedColorMapping;
-};
-
-export async function fetchMapImage({ mapId, mapPoints, width, height, timestamp, areas }) {
-    const MAP_CACHE_KEY = `mapCache-${JSON.stringify({ mapId, width, height, areas, timestamp })}`;
-    const mapColor = colorMapping(areas);
+    logger.d('生成地图配色', mapColor);
 
     let mapImage = await getCachedMapImage(MAP_CACHE_KEY);
     if (!mapImage) {
-        mapImage = await generateAndCacheMapImage(width, height, mapPoints, mapColor, MAP_CACHE_KEY);
+        mapImage = await getMapImage(sizeX, sizeY, mapPoints, mapColor, MAP_CACHE_KEY, perfectScale);
     }
-    return mapImage;
+    let minPoint = { x: minX, y: minY - sizeY };
+    let maxPoint = { x: minX + sizeX, y: minY };
+    return { base64Image: mapImage, minPoint, maxPoint };
 }
 
 const getCachedMapImage = async (cacheKey) => {
-    try {
-        const mapImage = await storage.getItem(cacheKey);
-        return mapImage;
-    } catch (error) {
-        logger.d('获取缓存地图失败:', error);
-        return null;
-    }
+    // try {
+    //     const mapImage = await storage.getItem(cacheKey);
+    //     return mapImage;
+    // } catch (error) {
+    return null;
+    // }
 };
 
-const generateAndCacheMapImage = async (width, height, mapPoints, mapColor, cacheKey) => {
+const getMapImage = async (sizeX, sizeY, mapPoints, mapColor, cacheKey, mapPerfectScale) => {
     logger.d('地图无缓存, 生成地图image', cacheKey);
-    if (mapPoints.length != width * height) {
-        logger.e(`地图生成数据错误: width:${width} height:${height}  mapPoints:${mapPoints}`);
+    if (mapPoints.length != sizeX * sizeY) {
+        logger.e(`地图数据错误: 宽高不匹配栅格值数量`);
         return null;
     }
-    const mapImage = await mapToImage(width, height, mapPoints, mapColor);
+    const mapImage = await mapToImage(sizeX, sizeY, mapPoints, mapColor, mapPerfectScale);
     if (mapImage) {
-        storage.setItem(cacheKey, mapImage);
+        try {
+            storage.setItem(cacheKey, mapImage);
+        } catch (error) {
+            logger.e('Failed to store mapImage in cache', error);
+        }
     }
     return mapImage;
 };
 
-
-async function mapToImage(width, height, mapPoints, mapColor) {
-    var rgbaArrayT = new Array(width * height * 4);
-
-    // let color = mapConfig.defaultColor['0'];
-    for (let y = 0; y < width; y++) {
-        for (let x = 0; x < height; x++) {
-            let ind = y * height;
-
+/**
+ * 
+ * x上 y右
+ * @param {*} minX 
+ * @param {*} minY 
+ * @param {*} validWidth 
+ * @param {*} validHeight 
+ * @param {*} mapPoints 
+ * @param {*} mapColor 
+ * @returns 
+ */
+async function mapToImage(sizeX, sizeY, mapPoints, mapColor, mapPerfectScale) {
+    var rgbaArrayT = new Array(sizeX * sizeY * 4);
+    for (let y = 0; y < sizeY; y++) {
+        for (let x = 0; x < sizeX; x++) {
+            let ind = y + x * sizeY;
             let value = mapPoints[ind] ?? 0;
             //   let value = valueT > 127 ? (valueT - 256) : valueT; // uint8->int8
             //   colorDic['' + value] = '' + value;
             // 获取房间值
             //   const ob = getMapValue(value);// 分层
             //   value = ob.value;
-            // if ((value == SCCMapColor.patch_carpet || value == SCCMapColor.carpet) && isCarpetXY(x, y)){
-            //   color = carpeDisplayStatus ? SMapColorConfig.carpetColor : SMapColorConfig.discoverColor;
-            // } 
+
             // 地毯
             //   if ((value == SCCMapColor.patch_carpet || value == SCCMapColor.carpet)) {
             //     // color = carpeDisplayStatus ? SMapColorConfig.carpetColor : SMapColorConfig.discoverColor;
@@ -150,24 +152,23 @@ async function mapToImage(width, height, mapPoints, mapColor) {
             //       // SSlog('房间颜色------', value, color)
             //     }
             //   }
+            // color = SMapColorConfig.roomColor;
+            // // 根据颜色id获取对应的颜色
+            // color = getRoomColor(value, x, y);
+            // // SSlog('房间颜色------', value, color)
 
-            setRGBA(rgbaArrayT, ind, mapColor[value + '']);
-
+            setRGBA(rgbaArrayT, ind, mapColor[value]);
         }
     }
 
     let base64 = '';
     try {
-        const mapPerfectScale = 2;
-        rgbaArrayT = perfectMapData(rgbaArrayT, width, height, mapPerfectScale);
-        base64 = await Uint8ToPNGBase64(width * mapPerfectScale, height * mapPerfectScale, rgbaArrayT);
+        rgbaArrayT = perfectMapData(rgbaArrayT, sizeY, sizeX, mapPerfectScale);
+        base64 = await Uint8ToPNGBase64(sizeY * mapPerfectScale, sizeX * mapPerfectScale, rgbaArrayT);
     } catch (error) {
         logger.d('图片转换异常', error);
     }
-    logger.d(`55555 1 - 地图base64:色值:`, mapColor, base64);
-    // lng:X轴坐标，lat:Y轴坐标     L的坐标系是，左下为(-800，0) 右上为:(0,800) - (笛卡尔坐标系左上角部分 为 地图)
-    //   return [base64, minX - sizeX, maxX - sizeX, sizeY - minY, sizeY - maxY];
-    // 
+    // logger.d(`55555 1 - 地图base64:色值:`, mapColor, base64);
     return base64;
 }
 

@@ -1,29 +1,58 @@
 import logger from './logger';
 import { MATERIAL_TYPE } from "./constants";
 import { md5 } from 'js-md5';
+import base64js from 'base64-js';
+import Lz4 from './lz4Util';
+
+export function isNull(variable) {
+	if (variable === null || variable === undefined) {
+		return true;
+	}
+	if (typeof variable === 'string' && variable.trim() === '') {
+		return true;
+	}
+	if (Array.isArray(variable) && variable.length === 0) {
+		return true;
+	}
+	if (typeof variable === 'object' && Object.keys(variable).length === 0) {
+		return true;
+	}
+	return false;
+}
+
+export function isNumber(obj) {
+	return typeof obj === 'number' && !isNaN(obj);
+}
+
 
 export const SMapValueType = { simple: 0, cover: 1, negative: 2 }; // 地图值的类型
 // 房间颜色值 - 109
 export const SCCMapColor = { obstacle: -9, patch_carpet: -4, carpet: -3, patch: -2, wall: -1, background: 0, discover: 1, cover: 2, deepCover: 3, roomBegin: 10, roomEnd: 59, coverRoomBegin: 60, coverRoomEnd: 109, deepCoverRoomBegin: -109, deepCoverRoomEnd: -60, carpetRoomBegin: -109, carpetRoomEnd: -60, };
 
-// export function Uint8ToPNGBase64(width, height, u8Arr) {
-// 	return new Promise((resolve, reject) => {
-// 		var image = new Jimp(width, height, function (err, image) {
-// 			let buffer = image.bitmap.data;
-// 			for (let i = 0; i < u8Arr.length; i++) {
-// 				buffer[i] = u8Arr[i];
-// 			}
-// 			image.getBase64Async(image.getMIME()).then(res => {
-// 				// logger.d('getBase64Async res:', res);
-// 				resolve(res);
-// 			}).catch(error => {
-// 				logger.d('getBase64Async error:', error);
-// 				reject(error);
-// 			});
-// 		})
-// 	});
-// }
 
+export function getMapDataPoints(map, lz4Len) {
+	try {
+		if (!lz4Len) {
+			throw new Error('useMapPoints map pix is empty');
+		}
+		const decodedString = base64js.toByteArray(map);
+		const data = Lz4.uncompress(decodedString, lz4Len);
+		const uint8Array = new Uint8Array(data);
+		logger.d('uint8Array in useMapPoints succ', uint8Array.length);
+		return uint8Array;
+	} catch (error) {
+		logger.e('Error in useMapPoints:', error);
+		return [];
+	}
+}
+
+/**
+ * u8Arr RGB数据转换为base64图片
+ * @param {*} width 
+ * @param {*} height 
+ * @param {*} u8Arr 
+ * @returns 
+ */
 export function Uint8ToPNGBase64(width, height, u8Arr) {
 	return new Promise((resolve, reject) => {
 		try {
@@ -60,248 +89,6 @@ function encodeData(data) {
 	return btoa(strData);
 }
 
-// 把json格式的地图数据进行转换
-export function convertJson(mapData, carpeDisplayStatus, testJson) {
-	// logger.d('dataJSON:', mapData);
-	try {
-		// let data = testJson;
-		let data = mapData;
-
-		// logger.d('开始convertJson 传入的1: ', data);
-		// 把json数据，更新到原来的probuf模型上， 方便下面方法的统一使用工具类的方法
-		let robotMap = {};
-
-		robotMap.mapType = data.type;
-		robotMap.mapExtInfo = {
-			taskBeginDate: data.ext.begin,
-			mapUploadDate: data.ext.upload,
-			mapValid: data.ext.valid,
-			radian: data.ext.radian,
-			force: data.ext.force,
-			cleanPath: data.ext.path,
-			boudaryInfo: data.ext.boudaryInfo,
-			mapVersion: data.ext.mapVersion,
-			mapValueType: data.ext.mapValueType,
-		};
-		// logger.d('dataJSON: 1');
-		robotMap.mapHead = {
-			mapHeadId: data.head.id,
-			sizeX: data.head.size[0],
-			sizeY: data.head.size[1],
-			minX: data.head.min[0],
-			minY: data.head.min[1],
-			resolution: data.head.ratio,
-		};
-		// 解析全图，是因为地图数据在3D上有显示，要通过真实的图来确认
-		let pointArr = convertHex16ToUint8Array(data.data.map, data.head.size[0] * data.head.size[1]);
-		robotMap.mapData = {
-			mapData: pointArr,
-			wifiData: null
-		};
-		if (data.historyPose) {
-			robotMap.historyPose = {
-				poseId: data.historyPose.id,
-				points: [],
-				pathType: data.historyPose.PTY
-			};
-			for (let m of data.historyPose.PTS) {
-				let p = { x: m.x, y: m.y, update: m.tie };
-				robotMap.historyPose.points.push(p);
-			}
-		} else {
-			robotMap.historyPose = null;
-		}
-		if (data.chargeStation) {
-			robotMap.chargeStation = {
-				x: data.chargeStation.x,
-				y: data.chargeStation.y,
-				phi: data.chargeStation.phi,
-				roomId: data.chargeStation.RI,
-			};
-		} else {
-			robotMap.chargeStation = null;
-		}
-		// logger.d(`999999:`, robotMap.chargeStation);
-		// logger.d('66666:   4');
-		if (data.currentPose) {
-			robotMap.currentPose = {
-				poseId: data.currentPose.id,
-				x: data.currentPose.x,
-				y: data.currentPose.y,
-				phi: data.currentPose.phi
-			};
-		} else {
-			robotMap.currentPose = null;
-		}
-		// logger.d('66666:   5');
-		robotMap.virtualWalls = [];
-		if (data.virtualWalls_v2 instanceof Array) {
-			for (let w of data.virtualWalls_v2) {
-				let wall = { status: w.ST, type: w.TY, areaIndex: w.AI };
-				wall.points = [];
-				for (let p of w.PTS) {
-					wall.points.push({ x: p.x, y: p.y });
-				}
-				robotMap.virtualWalls.push(wall);
-			}
-		}
-		// logger.d('66666:   6');
-		// TEST
-		// let vall_1 = { status: 0, type: 2, areaIndex: 0, points:[ {x:-5,y:-5},{x:-5,y:-5},{x:0,y:0},{x:0,y:0} ] };
-		// let vall_2 = { status: 0, type: 3, areaIndex: 0, points:[ {x:0,y:0}, {x:3,y:0},{x:3,y:3},{x:0,y:3} ] };
-		// let vall_3 = { status: 0, type: 6, areaIndex: 0, points:[ {x:4,y:0}, {x:6,y:0},{x:6,y:3},{x:4,y:3} ] };
-		// robotMap.virtualWalls = [vall_1, vall_2, vall_3];
-
-		// logger.d('66666:   7');
-		robotMap.areasInfo = [];
-		if (data.areasInfo_v2 instanceof Array) {
-			for (let w of data.areasInfo_v2) {
-				let wall = { status: w.ST, type: w.TY, areaIndex: w.AI };
-				wall.points = [];
-				for (let p of w.PTS) {
-					wall.points.push({ x: p.x, y: p.y });
-				}
-				robotMap.areasInfo.push(wall);
-			}
-		}
-
-		// let vall_2 = { status: 0, type: 3, areaIndex: 0, points:[ {x:0,y:0}, {x:3,y:0},{x:3,y:3},{x:0,y:3} ] };
-		// let vall_3 = { status: 0, type: 6, areaIndex: 0, points:[ {x:4,y:0}, {x:6,y:0},{x:6,y:3},{x:4,y:3} ] };
-		// robotMap.areasInfo = [vall_2, vall_3];
-
-		// logger.d('66666:   8');
-		// robotMap.navigationPoints = [];
-		// if (data.navigationPoints instanceof Array) {
-		// 	for(let n of data.navigationPoints){ 
-		// 		robotMap.navigationPoints.push({ pointId: n.id, status: n.ST, pointType: n.PT, x:n.x, y: n.y, phi: n.phi });
-		// 	}
-		// }
-		// logger.d('66666:   9');
-		robotMap.roomDataInfo = [];
-		if (data.roomInfo instanceof Array) {
-			for (let r of data.roomInfo) {
-				let room = { roomId: r.id, roomName: r.RN, roomTypeId: r.RT, meterialId: r.MID, cleanState: r.CS, roomClean: r.RC, roomCleanIndex: r.RCI, roomNamePost: { x: r.x, y: r.y }, colorid: r.CI };
-				room.cleanPerfer = { cleanMode: r.CM, waterLevel: r.WL, windPower: r.WP, twiceClean: r.TC };
-				robotMap.roomDataInfo.push(room);
-			}
-		}
-		// robotMap.roomDataInfo[2].cleanState = 2; // TEST
-		// logger.d('66666:   10');
-		// robotMap.roomMatrix = null; // TT--TT
-		// robotMap.roomChain = [];
-		// // logger.d('66666:   11');
-		// if (data.roomChain instanceof Array){
-		// 	for(let w of data.roomChain ){ 
-		// 		let chain = { roomId: w.id };
-		// 		chain.points = [];
-		// 		for(let p of w.PTS ){ 
-		// 			chain.points.push({ x: p.x, y: p.y, value: p.v });
-		// 		} 
-		// 	}
-		// }
-		// logger.d('66666:   12');
-		// robotMap.objects = [];
-		// if (data.objects instanceof Array){
-		// 	for(let o of data.objects ){ 
-		// 		robotMap.objects.push({ objectId: o.id, objectTypeId: o.tid, objectName: o.ON, confirm: o.CF, x: o.x, y: o.y, url:o.url, notShow: o.NS });
-		// 	}
-		// }
-
-		// let furn = {};
-		// furn.id = 3333;
-		// furn.typeId = 1511;
-		// // repeated DevicePointInfo points = 3;
-		// // furn.points = [
-		// //   {x: 0, y: 0}, {x: 0, y: 4}, {x: 4, y: 4},{x: 4, y: 0}
-		// // ];
-
-		// robotMap.furnitureInfo = [furn];
-		// logger.d('66666:   13');
-		robotMap.furnitureInfo = [];
-		if (data.furnitures) {
-			if (data.furnitures instanceof Array) {
-				for (let f of data.furnitures) {
-					let furn = { id: f.id, typeId: f.tid, url: f.url, status: f.ST, };
-					furn.points = [];
-					for (let p of f.PTS) {
-						furn.points.push({ x: p.x, y: p.y });
-					}
-					furn.react = [];  // TT--TT
-					robotMap.furnitureInfo.push(furn);
-				}
-			}
-		}
-
-
-		// // TEST
-		// let line0 = {
-		//   type: 0,
-		//   begin: { x: 4.3, y: 3.8 },
-		//   end : { x: 0, y: 3.8 }
-		// }
-		// let line1 = {
-		//   tyep: 1,
-		//   begin: { x: 4.3, y: 0 },
-		//   end : { x: 0, y: 0 }
-		// }
-		// let line2 = {
-		//   tyep: 2,
-		//   begin: { x: 4.3, y: 0 },
-		//   end : { x: 0, y: 3.8 }
-		// }
-		// let threeInfoRoom = {
-		//   roomId: 10,
-		//   lines: [line0, line1, line2]
-		// };
-		// robotMap.threeInfo = {};
-		// robotMap.threeInfo.rooms = [threeInfoRoom];
-		// logger.d('robotMap.threeInfo:', robotMap.threeInfo);
-		// logger.d('66666:   14');
-
-		// 先解析threeInfo，如果和之前的渲染过的一致，就不再更新，直接
-		if (data.threeInfo) {
-			robotMap.threeInfo = { rooms: [] };
-			if (data.threeInfo instanceof Array) {
-				for (let thr of data.threeInfo) {
-					let room = { roomId: thr.id, lines: [] };
-					for (let li of thr.Lines) {
-						let line = { type: li.TY };
-						line.begin = { x: li.BPT.x, y: li.BPT.y };
-						line.end = { x: li.EPT.x, y: li.EPT.y };
-						room.lines.push(line);
-					}
-					robotMap.threeInfo.rooms.push(room);
-				}
-			}
-		}
-		// logger.d('dataJSON: 2');
-
-		// logger.d('robotMap：', robotMap);
-		let threeMd5 = md5.update(JSON.stringify(robotMap.threeInfo)).digest('hex');
-		let areaMd5 = md5.update(JSON.stringify(robotMap.areasInfo)).digest('hex');
-		let wallMd5 = md5.update(JSON.stringify(robotMap.virtualWalls)).digest('hex');
-		let poseMd5 = md5.update(JSON.stringify(robotMap.currentPose)).digest('hex');
-		let charMd5 = md5.update(JSON.stringify(robotMap.chargeStation)).digest('hex');
-		return [robotMap, { threeMd5, areaMd5, wallMd5, poseMd5, charMd5 }];
-	} catch (error) {
-		logger.d(`convertJson error:`, error);
-		return [];
-	}
-}
-
-
-//地图数据解码
-function convertHex16ToUint8Array(b64Data) {
-	//base64解码
-	const str = window.atob(b64Data);
-	// 转成int8
-	let buffer = new Int8Array(str.length);
-	for (let i = 0; i < buffer.length; i++) {
-		buffer[i] = str.charCodeAt(i);
-	}
-	const mapArr = Array.from(buffer);
-	return mapArr
-}
 
 // 获取家具的方向，中心点
 export function getCenterAndWH(points) {
@@ -350,61 +137,6 @@ export function getCenterAndWH(points) {
 	return { x: 1100, y: 1100, width: 0, height: 0, phi: 0 };
 }
 
-export function parseNewCharge(robotMap, chargeInfo) {
-	if (robotMap.chargeStation == null) {
-		logger.d('充电座位置:nil');
-	} else {
-		chargeInfo.x = robotMap.chargeStation.x;
-		chargeInfo.y = robotMap.chargeStation.y;
-		chargeInfo.phi = getValidPhi(robotMap.chargeStation.phi);
-	}
-	return chargeInfo;
-}
-
-export function parseNewPoint(robotMap, pointInfo) {
-	try {
-		// logger.d('6666:1', pointInfo);
-		if (!robotMap.currentPose) {
-			logger.d('机器人位置:nil');
-		} else {
-			pointInfo = robotMap.currentPose;
-		}
-		// logger.d('6666:2', pointInfo);
-		let nP;
-		if (robotMap.historyPose) {
-			if (robotMap.historyPose.points && robotMap.historyPose.points.length > 0) {
-				nP = robotMap.historyPose.points[robotMap.historyPose.points.length - 1];
-			} else if (robotMap != null) {
-				nP = robotMap.currentPose;
-			}
-		}
-		// logger.d('6666:3', pointInfo);
-		// logger.d('6666:4', nP);
-		if (nP && nP.poseId > pointInfo.poseId) {
-			pointInfo = { ...pointInfo, ...nP };
-		}
-		pointInfo.phi = getValidPhi(pointInfo.phi);
-		logger.d('绘制使用的机器人位置:', pointInfo);
-		return pointInfo;
-	} catch (error) {
-		logger.d('parseNewPoint error:', error);
-		return pointInfo;
-	}
-}
-
-export function parseNewNavi(robotMap, spotInfo) {
-	if (robotMap.navigationPoints.length > 0) {
-		spotInfo.pose_id = robotMap.navigationPoints[0].pointId;
-		spotInfo.status = robotMap.navigationPoints[0].status;
-		spotInfo.x = robotMap.navigationPoints[0].x;
-		spotInfo.y = robotMap.navigationPoints[0].y;
-		spotInfo.phi = robotMap.navigationPoints[0].phi;
-	} else {
-		spotInfo.x = 1100;  // 让其无限远
-		spotInfo.y = 1100;
-	}
-	return spotInfo;
-}
 
 // 获取 -pi ~ pi 之间的phi值
 function getValidPhi(oldPhi) {
@@ -593,26 +325,6 @@ export function isMaterialWoodXY(x, y) {
 }
 
 
-export function setRGBA(rgba, i, color, four = true) {
-	if (color == undefined) {
-		return;
-	}
-	if (rgba.length < i * 4 + 3) {
-		return;
-	}
-	if (four) {
-		rgba[i * 4 + 0] = color[0];
-		rgba[i * 4 + 1] = color[1];
-		rgba[i * 4 + 2] = color[2];
-		rgba[i * 4 + 3] = color[3];
-	} else {
-		rgba[i * 3 + 0] = color[0];
-		rgba[i * 3 + 1] = color[1];
-		rgba[i * 3 + 2] = color[2];
-	}
-}
-
-
 // 地图插值  800 -> 1600   升分辨率
 export function perfectMapData(mapData, sizeX, sizeY, mapPerfectScale) {
 	try {
@@ -652,22 +364,3 @@ export function perfectMapData(mapData, sizeX, sizeY, mapPerfectScale) {
 	}
 }
 
-export function isNull(variable) {
-	if (variable === null || variable === undefined) {
-		return true;
-	}
-	if (typeof variable === 'string' && variable.trim() === '') {
-		return true;
-	}
-	if (Array.isArray(variable) && variable.length === 0) {
-		return true;
-	}
-	if (typeof variable === 'object' && Object.keys(variable).length === 0) {
-		return true;
-	}
-	return false;
-}
-
-export function isNumber(obj) {
-	return typeof obj === 'number' && !isNaN(obj);
-}

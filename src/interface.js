@@ -1,0 +1,95 @@
+// 请传入此结构地图数据
+export const testData = {
+    mapId: 1, // 0 临时图  1-4
+    name: "",
+    saved: 1,// 0 未保存 1已保存 
+    full: 1, //? 是否是全图 
+    status: 1,// 是否使用中
+    angle: 0,// 地图在上层显示的旋转角度（与x轴正方向的夹角），用于APP端显示时旋转，设备端仅存储，不做处理。单位弧度，范围:-π <= x <= π 。默认0，即不旋转。 例如逆时针旋转90角度，x = π / 2， 顺势针旋转90角度，x = -π / 2
+    upload: 1230674396, // 地图上传时间戳 到 ms- 防止重复渲染
+    begin: 1230674396, // 任务开始的时间戳, 0 无任务 
+    mapData: {
+        // 地图更新, 时间戳一定也更新了, 但时间戳更新,地图不一定更新 (十几秒)
+        // 解码: base64js.toByteArray, Lz4.uncompress.
+        map: "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",
+        lz4Len: 23244,
+        direction: 1, // 地图方向
+        totalWidth: 800,
+        totalHeight: 800,
+        sizeX: 156,
+        sizeY: 149,
+        minX: 340,
+        minY: 340,
+        resolution: 5,// 地图像素 真实世界
+    },
+    chargePos: { x: 0, y: 0, a: 18000 }, // 充电座位置
+    robotPos: { x: 0, y: 0, a: 0 }, // 机器人位置
+    pathData: [],// 轨迹优化算法(非弓+抽稀+贝塞尔)放外面.
+    roomInfos: [
+        {
+            id: 4, // 对应地图中的房间value
+            name: '餐厅1',
+            centerX: 368,
+            centerY: 391,
+            neibs: [3], // 相邻的房间Id.
+            type: 6, // RoomIconType 房间类别 
+            status: 0, // 清扫状态: 0-未清扫 1- 正在清扫 2-已经清扫
+            material: 0, // 房间材质 :0未知 1水泥地 2瓷砖 3 木板 ...
+            color: 1, // 房间颜色  - (四色 放外部,减少H5计算量)
+            prefer: { // 房间清扫偏好, 可能需要展示在上面
+                mode: 1, // 清扫模式
+                water: 1, // 水量
+                wind: 1, // 吸力
+                count: 1,// 清扫次数
+                order: 1, // 清扫顺序
+            },
+        },
+        {
+            id: 3, // 对应地图中的房间value
+            name: '餐厅2',
+            centerX: 355,
+            centerY: 433,
+            neibs: [4],// 相邻的房间Id.
+            type: 6,
+            status: 0,// 清扫状态: 0-未清扫 1- 正在清扫 2-已经清扫
+            material: 0,// 房间材质 :0未知 1水泥地 2瓷砖 3 木板 ...
+            color: 2,// 房间颜色
+        }
+    ],
+    roomChain: [{
+        id: 4,//房间ID
+        PTS: [{//  
+            x: 390,// 注意:此处的 x, y 为 全图(默认800*800，会扩充)中的行和列，左下为(0, 0)
+            y: 341,
+            v: 0, //是否门 用于展示门的位置，和判断指哪点、划区的合法性
+        }],
+    }],// 房间边界点
+    virtualWalls: [ // 虚拟线或区域, 包含 虚拟墙, 划区, 扫地禁区,拖地禁区 , 同类型的ID 不同
+        {
+            id: 0,
+            type: 0, // 0-划区 1-扫地禁区 2-拖地禁区 3-门槛 4-障碍 5- 定点清扫
+            status: 0, //是否生效
+            PTS: [],// 一个是点, 两点是线, 四点是矩形 [leftTop,rightTop,rightBottom,leftBottom] 
+        }
+    ],
+    three: [], // 3d AI 信息
+}
+
+
+export const RoomIconType = Object.freeze({
+    DEFAULT: 0, // 默认
+    KE_TING: 1,
+    WEI_YU: 2,
+    WO_SHI: 3,
+    CHU_FANG: 4,
+    YANG_TAI: 5,
+    CAN_TING: 6,
+    SHU_FANG: 7,
+    JIAN_SHEN_FANG: 8,
+    ZOU_LANG: 9,
+    YANG_GUANG_FANG: 10,
+    ER_TONG_FANG: 11,
+    CHU_CAN_SHI: 12,
+    XIU_XI_SHI: 13,
+    XI_YI_FANG: 14
+});

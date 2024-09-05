@@ -1,8 +1,10 @@
 const Images = {
-    closeIconUrl: './assets/img/close.png',
-    xuanzhuanIconUrl: './assets/img/xuanzhuan.png',
-    suofangIconUrl: './assets/img/zoom.png',
-    topRightIconUrl: './assets/img/xuanzhuan.png'
+    robotIcon: './img/jiqiren.png',
+    chargeIcon: './img/chongdianzhuang.png',
+    closeIconUrl: './img/close.png',
+    xuanzhuanIconUrl: './img/xuanzhuan.png',
+    suofangIconUrl: './img/zoom.png',
+    topRightIconUrl: './img/xuanzhuan.png'
 }
 
 export { Images }

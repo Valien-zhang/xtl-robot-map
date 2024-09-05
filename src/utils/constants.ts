@@ -251,30 +251,33 @@ export const MAP_COLOR = {
   background: 'rgba(255,255,255,0)',
 }
 
-export const SMapColorConfig = {
-  wallColor: [237, 243, 249, 255],
-  bgColor: [255, 255, 255, 0],
-  discoverColor: [180, 195, 207, 127], // B4C3CF 50%
-  roomColor: [120, 180, 240, 255], // 78B4F0
+export const SMapColorConfig = Object.freeze({
+  wallColor: [109, 125, 125, 204], // 80%透明度
+  bgColor: [255, 255, 255, 0], // 全透明
+  discoverColor: [214, 228, 228, 255], // 临时图/扩展区域
+  roomColor: [225, 229, 233, 255], // 未选择区域
   selectedColor: [17, 75, 148, 64], // 114B94 25%
-  carpetColor: [255, 255, 255, 127],
-  patchColor: [255, 255, 255, 255],
+  carpetColor: [37, 55, 70, 127],// 地毯
+
+  sweepPathColor: [255, 255, 255, 255],// 线无透明度
+  mopPathColor: [255, 255, 255, 255],// 底色60%透明度，线无透明度
+  bothPathColor: [255, 255, 255, 127],// 底色60%透明度，线50%透明度
+  backgroundPathColor: [255, 255, 255, 153],//底色
   roomColors: [
-    [120, 180, 240, 255], // '#78B4F0'
-    // [109, 165, 255, 255], // '#6DA5FF'
-    [141, 161, 255, 255], // '#8DA1FF'
-    [126, 222, 220, 255], // '#7EDEDC'
-    [169, 223, 188, 255], // '#A9DFBC'
+    [167, 234, 227, 255], // 绿 rgba(167, 234, 227, 1)
+    [247, 228, 151, 255], // 黄 rgba(247, 228, 151, 1)
+    [175, 203, 241, 255], // 蓝
+    [245, 192, 155, 255], // 红 rgba(245, 192, 155, 1)
   ],
   // 不同房间的材质颜色不一样
-  roomMaterialColors: [
-    [112, 175, 238, 255], // '#70AFEE'
-    [101, 158, 250, 255], // '#659EFA'
-    [134, 154, 250, 255], // '#869AFA'
-    [113, 212, 210, 255], // '#71D4D2'
-    [155, 214, 176, 255], // '#9BD6B0'
-  ]
-};
+  // roomMaterialColors: [
+  //   [112, 175, 238, 255], // '#70AFEE'
+  //   [101, 158, 250, 255], // '#659EFA'
+  //   [134, 154, 250, 255], // '#869AFA'
+  //   [113, 212, 210, 255], // '#71D4D2'
+  //   [155, 214, 176, 255], // '#9BD6B0'
+  // ]
+});
 
 /**
  * 材质类型: 1:水泥地面 2:瓷砖 3:木地板 30:其他
@@ -294,26 +297,16 @@ export const VIRTUAL_TYPE = {
 }
 
 export const MapZIndex = {
-  //地图图层
-  mapLayer: 0,
-  //充电桩图层
-  chargeStationLayer: 100,
-  // 虚拟墙图层
-  virtualWallsLayer: 200,
-  //划区图层
-  areasLayer: 100,
-  // 房间名称图层
-  roomNameLayer: 100,
-  //房间组图层
-  roomsGroupLayer: 100,
-  //房间图层
-  roomsLayer: 100,
-  //路径图层
-  lastPathLayer: 100,
-  //动画图层
-  animatedMarker: 100,
-  //设置的划区图层
-  setArearect: 100,
+  map: -1,              // 底部的图片 (地毯)
+  path: 100,            // 路径
+  roomsGroup: 200,      // 房间的选中轮廓 包括了轮廓 + 填充
+  iconName: 300,        // 房间名字
+  chareBase: 400,       // 充电座
+  robot: 600,           // 机器人 
+  virtualWall: 700,     // 虚拟墙
+  area: 800,            // 划区
+  zoomMarker: 900,      // 划区缩放控件
+  setArearect: 1000,    // 划区添加的控件
 }
 
 /**

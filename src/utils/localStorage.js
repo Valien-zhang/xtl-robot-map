@@ -24,8 +24,8 @@ async function clearExpiredItems() {
     }
 }
 
-// 存储数据并附带过期时间, 默认1小时
-async function setItem(key, value, ttl = 60 * 60 * 1000) {
+// 存储数据并附带过期时间, 默认15分钟
+async function setItem(key, value, ttl = 15 * 60 * 1000) {
     const now = new Date().getTime();
     const item = {
         value: value,
