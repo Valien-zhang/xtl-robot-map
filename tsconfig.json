@@ -1,15 +1,17 @@
 {
-    "include": ["src/**/*/*.ts", "src/**/*.ts", "src/*.ts", "test/*.*.ts", "test/*/*.*.ts"],
-    "output": "./dist/",
-    "paths": {
-      "src/*": ["src/*", "src/*/*"]
-    },
-    "compilerOptions": {
-      "target": "es5",
-      "moduleResolution": "node",
-      "strict": true,
-      "esModuleInterop": true,
-      "useUnknownInCatchVariables": false
-    }
-  }
-  
+  "compilerOptions": {
+    "target": "ES6", // 或者其他目标版本
+    "module": "ESNext", // Rollup 支持的模块类型
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": [
+    "src/**/*",
+    "src/interface.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

@@ -3,6 +3,8 @@ import { MATERIAL_TYPE } from "./constants";
 import { md5 } from 'js-md5';
 import base64js from 'base64-js';
 import Lz4 from './lz4Util';
+import { LatLng } from "leaflet";
+import { LatLngBounds } from "leaflet";
 
 export function isNull(variable) {
 	if (variable === null || variable === undefined) {
@@ -29,7 +31,21 @@ export const SMapValueType = { simple: 0, cover: 1, negative: 2 }; // 地图值�
 // 房间颜色值 - 109
 export const SCCMapColor = { obstacle: -9, patch_carpet: -4, carpet: -3, patch: -2, wall: -1, background: 0, discover: 1, cover: 2, deepCover: 3, roomBegin: 10, roomEnd: 59, coverRoomBegin: 60, coverRoomEnd: 109, deepCoverRoomBegin: -109, deepCoverRoomEnd: -60, carpetRoomBegin: -109, carpetRoomEnd: -60, };
 
+/**
+ * 
+ * @param {string} keyStr
+ * @returns {string} Md5Key 
+ */
+export function generateMd5Key(keyStr) {
+	return md5(keyStr);
+}
 
+/**
+ * 获取地图上所有的栅格点
+ * @param {*} map 
+ * @param {*} lz4Len 
+ * @returns 
+ */
 export function getMapDataPoints(map, lz4Len) {
 	try {
 		if (!lz4Len) {
@@ -362,5 +378,46 @@ export function perfectMapData(mapData, sizeX, sizeY, mapPerfectScale) {
 		logger.d(`perfectMapData error:`, error);
 		return [];
 	}
+}
+
+
+
+// 获取两个世界坐标对应的屏幕上的距离。以当前的缩放比
+// export function getPointDistanceByPixels(map, pixel1, pixel2) {
+// 	logger.d(`pixel1:`, pixel1, pixel2);
+// 	// let worldP1 = pixel2WorldObj(pixel1.x || pixel1.lng, pixel1.y || pixel1.lat, head);
+// 	// let worldP2 = pixel2WorldObj(pixel2.x || pixel2.lng, pixel2.y || pixel2.lat, head);
+// 	// logger.d(`worldP1:`, worldP1, worldP2);
+// 	let leaflet1 = world2Leaflet(pixel1.x || pixel1.lng, pixel1.y || pixel1.lat);
+// 	let leaflet2 = world2Leaflet(pixel2.x || pixel2.lng, pixel2.y || pixel2.lat);
+// 	logger.d(`leaflet1:`, leaflet1, leaflet2);
+// 	let point1 = map.latLngToContainerPoint({ lng: leaflet1[0], lat: leaflet1[1] });
+// 	let point2 = map.latLngToContainerPoint({ lng: leaflet2[0], lat: leaflet2[1] });
+// 	logger.d(`point1:`, point1, point2);
+// 	let disatnce = Math.sqrt(Math.pow(point1.x - point2.x, 2) + Math.pow(point1.y - point2.y, 2));
+// 	logger.d(`disatnce:`, disatnce);
+
+// 	return disatnce;
+// }
+
+// 根据地图的缩放比,计算
+export function getCorrectBound(mapZoonRect, bounds) {
+	//<LatLngBounds> 
+	logger.d(`bounds:`, bounds);
+	let leftBottom = bounds.getSouthWest();
+	let rightTop = bounds.getNorthEast();
+	let width = Math.abs(leftBottom.lng - rightTop.lng);
+	let height = Math.abs(leftBottom.lat - rightTop.lat);
+	// width / (width + x) =  mapZoonRect.showRatio
+	// (width + x) =  width /  mapZoonRect.showRatio
+	// x = width / mapZoonRect.showRatio - width
+	let offsetX = (width / mapZoonRect.showRatio - width) / 2.0;
+	let offsetY = (height / mapZoonRect.showRatio - height) / 2.0;
+	logger.d(`offsetXY:`, offsetX, offsetY, leftBottom.lat + offsetY, leftBottom.lng + offsetX);
+	let newLeftBottom = new LatLng(leftBottom.lat - offsetY, leftBottom.lng - offsetX);
+	let newRightTop = new LatLng(rightTop.lat + offsetY, rightTop.lng + offsetX);
+	let result = new LatLngBounds(newLeftBottom, newRightTop);
+	logger.d(`getCorrectBound bounds:`, result);
+	return result;
 }
 

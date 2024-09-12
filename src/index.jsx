@@ -1,77 +1,65 @@
-import React, { useRef, useState, useEffect, useCallback, useMemo, MutableRefObject } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import L from 'leaflet';
-import { Observer, useLocalObservable } from 'mobx-react-lite';
 import {
-    CLEAN_TIMES,
-    isWorking,
-    WIND_LEVEL,
-    MAP_COLOR,
-    VIRTUAL_TYPE,
-    SMapColorConfig,
-    bottomBarHeight,
-    isInStation,
-    WORK_STATE,
-    SWEEP_MODE,
-    WATER_LEVEL,
-    MapZIndex
-} from './utils/constants';
-import {
-    Uint8ToPNGBase64,
-    getMapValue,
-    SMapValueType,
-    SCCMapColor,
-    isCarpetXY,
-    setRGBA,
-    perfectMapData,
-    isMaterialXY,
+    getCorrectBound,
     isNull
 } from './utils/util_function';
-
+import { MapZIndex, MAP_COLOR } from './utils/constants';
 import './index.less';
-import { Images } from './assets';
 import logger from './utils/logger';
 import { useIsMounted } from './hooks';
-import { decode as base64decode, toUint8Array } from 'js-base64';
 import storage from './utils/localStorage';
-import { fetchMapImage } from './utils/util_mapData';
-import base64js from 'base64-js';
-import Lz4 from './utils/lz4Util';
-import { MapContainer, ImageOverlay, Marker, TileLayer, Circle, useMap, useMapEvents } from 'react-leaflet'
-// import 'leaflet/dist/leaflet.css';
+import { fetchMapImage, paresMapData, roomToCRS, CRSToRoom } from './utils/util_mapData';
 import 'leaflet-path-drag';
-import { testData } from './interface';
-import { RobotIconMarker, ChargeIconMarker } from './components';
-import { runInAction } from 'mobx';
+import getChargeIcon from './components/chargeIcon';
+import getRobotIcon from './components/robotIcon';
+import roomInfoCard from './components/customInfoCard'
+
+import { MapInfo, RoomTipType, CleanModeType } from './interface.ts';
+import testData from './testData.json';
 
 
 
-// 屏幕的宽高
-const screenWidth = document.body.clientWidth;
-const screenHeight = document.documentElement.clientHeight;
-const mapZoonRect = { max: 6, min: 4, default: 4.0, current: 0.0, showRatio: 0.9 };
-// 距离开始限制拖动的距离
-const lastMapDistance = { left: 10000, right: 10000, top: 10000, bottom: 10000 };
-const topBarHeight = 88;
+/**
+ * @typedef {Object} LayersRefType
+ * @property {L.ImageOverlay|null} mapLayer - 地图
+ * @property {Object|null} virtualWallsLayer - 虚拟墙
+ * @property {Array<>} areaLayers - 划区
+ * @property {Array} roomNameLayer - 房间名称
+ * @property {Array} roomsLayer - 房间
+ * @property {Object|null} lastPathLayer - 路径
+ * @property {L.Marker|null} robotMarker - 机器人
+ * @property {L.Marker|null} chargeStationMarker - 充电桩
+ * @property {Object|null} setArearect - 设置划区
+ * @property {L.Marker|null} topRightMarker - 上右
+ * @property {L.Marker|null} bottomLeftMarker - 下左
+ * @property {L.Marker|null} rotateMarker - 旋转
+ * @property {L.Marker|null} zoomMarker - 缩放
+ * @property {L.Marker|null} closeMarker - 关闭
+ */
+
+
+
 //marker图标
 const closeIcon = L.icon({
-    iconUrl: Images.closeIconUrl,
+    iconUrl: './assets/img/close.png',
     iconSize: [25, 25],
     className: 'closemarker'
 });
 //旋转图标
 const xuanzhuanIcon = L.icon({
-    iconUrl: Images.xuanzhuanIconUrl,
+    iconUrl: './assets/img/xuanzhuan.png',
     iconSize: [25, 25],
     className: 'rotateIcon'
 });
 //缩放图标
 const suofangIcon = L.icon({
-    iconUrl: Images.suofangIconUrl,
+    iconUrl: './assets/img/suofang.png',
     iconSize: [32, 32],
     className: 'zoomIcon'
 });
 const topRightIcon = L.icon({
-    iconUrl: Images.topRightIconUrl,
+    iconUrl: './assets/img/topRight.png',
     iconSize: [1, 1],
     className: 'rotateIcon'
 });
@@ -80,247 +68,470 @@ const topRightIcon = L.icon({
 const MapView = (props) => {
     const {
         mapInfo,
+        cleanMode = CleanModeType.Smart,
+        selectedRooms = [], // 选中的房间
+        uiConfig:
+        {
+            isEditPileRin = false, // 是否可编辑禁区
+            isShowPileRin = false, // 是否显示禁区
+
+            isShowSplitLine = false, // 是否显示分割线
+            isShowCurPosRing = false, // 是否显示机器人当前位置
+            isShowBaseRing = false, // 是否显示基站ring
+
+            isShowTrace = false, // 是否显示轨迹
+            isShowAreaTips = false, // 是否显示房间标记
+            roomTipType = RoomTipType.IconName, // 房间标记类型
+
+            isEditZoning = false, // 是否可编辑划区
+            isShowZoning = false, // 是否显示划区
+
+            isShowCarpet = false, // 是否显示地毯
+            isEditCarpet = false, // 是否可编辑地毯
+
+            isSupportPanZoom = false, // 是否可缩放
+            isSupportSelectArea = false // 是否可选房间
+        },
         onMapMoveStart,
         onMapMoveEnd,
-        onDrawFinish // 地图渲染完成
+        onDrawFinish, // 地图渲染完成
     } = props;
 
     /** 图层引用 */
-    // const layersRef = useRef({
-    //     virtualWallsLayer: null, // 虚拟墙
-    //     areaLayers: [], // 划区
-    //     roomNameLayer: [], // 房间名称
-    //     roomsGroupLayer: null, // 房间组
-    //     roomsLayer: [], // 房间
-    //     lastPathLayer: null, // 路径
-    //     robotMarker: null, // 机器人
-    //     setArearect: null, // 设置划区
-    //     // 图层按钮
-    //     topRightMarker: null, // 上右
-    //     bottomLeftMarker: null, // 下左
-    //     rotateMarker: null, // 旋转
-    //     zoomMarker: null, // 缩放
-    //     closeMarker: null, // 关闭
-    // });
-    // 是否可渲染
-    const mapReadyStatusRef = useRef(true);
-    // 地图有效边界,随地图图层变化  左上、左下、右下、右上、中心
+    /** @type {React.MutableRefObject<L.Map>} */
+    const mapRef = useRef(null);
+    /** @type {React.MutableRefObject<LayersRefType>} */
+    const layersRef = useRef({
+        mapLayer: null,//
+        virtualWallsLayer: null, // 虚拟墙
+        areaLayers: [], // 划区
+
+        roomNameLayer: [], // 房间名称
+        roomsLayer: [], // 房间框
+
+        lastPathLayer: null, // 路径
+        robotMarker: null, // 机器人
+        chargeStationMarker: null, // 充电桩
+        setArearect: null, // 设置划区
+        // 图层按钮
+        topRightMarker: null, // 上右
+        bottomLeftMarker: null, // 下左
+        rotateMarker: null, // 旋转
+        zoomMarker: null, // 缩放
+        closeMarker: null, // 关闭
+    });
+    /** @type {React.MutableRefObject} */
+    const mapZoonRectRef = useRef({ max: 4, min: -1, default: 1.0, current: 0.0, showRatio: 0.9 });
+
+    // 数据
+    /** @type {React.MutableRefObject<MapInfo>} */
+    const mapModel = useRef(null);
+
+    /** @type {React.MutableRefObject} */
+    const lastMapModel = useRef(null);
+
+    /** @type {React.MutableRefObject<number>} */
+    const mapScale = useRef(1);
+
+    /** @type {React.MutableRefObject<string>} 内存缓存 */
+    const mapBase64Image = useRef('');
+    // 所有记录的数据坐标以leaflet 坐标系为准.
+    /** @type {React.MutableRefObject} 地图图层有效范围 */
     const mapValidRectRef = useRef({});
-    // 上一次地图的上传时间，用于过滤重复渲染
+
+    /** @type {React.MutableRefObject<[]>} 房间边界 集合 */
+    const roomChainsRef = useRef([]);
+
+    /** @type {React.MutableRefObject<number>} */
     const lastUploadTimeRef = useRef(0);
-    // state
-    const isUnmount = !useIsMounted();// 已卸载
-    const store = useLocalObservable(() => ({
-        mapModel: null, // 当前地图数据 
-        // {"angle": 0, "areas": "", "full": 0, "index": 0, "mapData": {map,width,height,minX,maxY,timetamp}, "mapId": 0, "mapTraceData": "***", "mopWalls": "", 
-        // "name": "", "pos": "{\"x\":411,\"y\":396,\"a\":231,\"i\":0}", "saved": 0, "status": 1, "ts": 1416732620, "virtualWalls": ""}
-        lastMapModel: null, // 上一次地图数据
-        mapScale: 1, // 地图缩放比例
-        // arearectLatlngs: [], // 划区框坐标
 
-        mapBase64Image: '',
-        mapBounds: [{ x: 0, y: 0 }, { x: 0, y: 0 }], // 地图边界
+    /** @type {React.MutableRefObject<boolean>} */
+    const mapReadyStatusRef = useRef(true);
 
-        // action
-        setMapModel(newMapInfo) {
-            // 过滤
-            if (isNull(newMapInfo) || isNull(newMapInfo.mapId) || isNull(newMapInfo.mapData)) {
-                return;
-            }
-            logger.d('init setMapModel', newMapInfo);
-            // 解析
-            // try {
-            //     const mapData = base64decode(newMapInfo.mapData);
-            //     newMapInfo.mapData = JSON.parse(mapData);
-
-            //     if (!isNull(newMapInfo.areas)) {
-            //         newMapInfo.areas = JSON.parse(newMapInfo.areas);
-            //     } else {
-            //         newMapInfo.areas = [];
-            //     }
-            // } catch (error) {
-            //     logger.e("解析mapData错误: ", error);
-            // }
-            this.setMapGround(newMapInfo);
-            this.mapModel = newMapInfo;
-        },
-
-        setMapScale(scale) {
-            this.mapScale = scale;
-        },
-
-        setMapGround(newMapInfo) {
-            const { minX, minY, sizeX, sizeY, map, lz4Len } = newMapInfo.mapData;
-
-            if (newMapInfo.upload < this.mapModel?.upload) {
-                logger.d('过滤渲染旧图', newMapInfo.upload, this.mapModel.upload);
-                return;
-            }
-
-            const mapChanged = newMapInfo.begin != this.mapModel?.begin || newMapInfo.mapId != this.mapModel?.mapId;
-            if (newMapInfo.upload === this.mapModel?.upload && !mapChanged) {
-                logger.d('过滤渲染相同图', newMapInfo.mapId);
-                return;
-            }
-
-            fetchMapImage({
-                perfectScale: !this.mapModel ? 2 : 1, // 第一次,加载1倍图. 加快首页图速度
-                mapId: newMapInfo.mapId,
-                map,
-                lz4Len,
-                minX,
-                minY,
-                sizeX,
-                sizeY,
-                roomInfos: newMapInfo.roomInfos ?? []
-            }).then((res) => {
-                runInAction(() => {
-                    logger.d('地图渲染', res);
-                    this.mapBase64Image = res.base64Image;
-                    this.mapBounds = [res.minPoint, res.maxPoint];
-                })
-            });
-        },
-
-        // get
-        get mapBoundslatLng() {
-            logger.d("1111", JSON.stringify(this.mapBounds));
-            return L.latLngBounds([this.mapBounds[0].y, this.mapBounds[0].x], [this.mapBounds[1].y, this.mapBounds[1].x]);
-        },
-        // 基站位置 { x: 0, y: 0, a: 18000 }
-        get chargePos() {
-            const chargePos = this.mapModel?.chargePos ?? { x: 0, y: 0, a: 0 };
-            return {
-                latLng: L.latLng(chargePos.y, chargePos.x),
-                angle: chargePos.a
-            };
-        },
-
-        get robotPos() {
-            const robotPos = this.mapModel?.robotPos ?? { x: 0, y: 0, a: 0 };
-            return {
-                latLng: L.latLng(robotPos.y, robotPos.x),
-                angle: robotPos.a
-            };
-        },
-    }));
+    const isUnmount = !useIsMounted();// 已挂载
 
     // 初始化 
     useEffect(() => {
-        // TODO: test
-        store.setMapModel(testData);
+
+        mapRef.current = L.map('map', {
+            zoomControl: false,
+            attributionControl: false,
+            zoomSnap: 0.01,
+            zoom: mapZoonRectRef.current.default,
+            minZoom: mapZoonRectRef.current.min,
+            maxZoom: mapZoonRectRef.current.max,
+            crs: L.CRS.Simple,
+            editable: true,
+            touchZoom: 'center',
+            bounceAtZoomLimits: false,
+            debounceMoveend: false,
+            doubleClickZoom: false,
+            easeLinearity: 0.0,
+            center: L.latLng(400, 400),
+            renderer: L.canvas({ padding: 0.05 })
+        });
+        logger.d(`55555--->初始化`);
+        // fitMapBounds(1);
+        // 地图在操作中，不要重绘
+        mapRef.current.on('zoom', (e) => {
+            mapReadyStatusRef.current = false;
+        });
+        mapRef.current.on('movestart', (e) => { // move
+            // logg('map movestart:');
+        });
+        mapRef.current.on('move', (e) => { // move
+            mapReadyStatusRef.current = false; // logger('map move:');
+            // setupMaxRect();
+        });
+
+        mapRef.current.on('moveend', (e) => { // moveend
+            mapReadyStatusRef.current = true;
+            // // logger.d('map moveend zoom:', e.target.getZoom());
+            // setTimeout(() => {
+            //     // logger.d('7777-moveend:允许拖动');
+            //     map && map.dragging.enable();
+            // }, 300);
+        });
+        mapRef.current.on('zoomend', (e) => {
+            mapReadyStatusRef.current = true;
+            // mapTrans.scale = e.target.getZoom();
+            // logger.d('map zoomend zoom:', mapTrans.scale);
+            // mapOnZoomend();
+        });
+        mapRef.current.on('load', (e) => {
+        });
+
+        logger.d(`55555--->初始化完成`, testData);
 
         return () => {
-
-            // clearAreaLayers();
-            // resetFunctionBtn();
+            mapRef.current.eachLayer((layer) => {
+                mapRef.current.removeLayer(layer);
+            });
+            mapRef.current.off();
+            mapRef.current.remove();
+            mapRef.current = null;
             // 清空过期缓存
             storage.clearExpiredItems();
         }
     }, [])
 
+    useEffect(() => {
+        // 过滤
+        if (isNull(mapInfo) || isNull(mapInfo.mapId) || isNull(mapInfo.mapData)) {
+            return;
+        }
+        // 处理地图数据, 缓存 + 更新
+        // handleMapData(mapInfo);
+        const info = paresMapData(testData);
+        logger.d('地图数据处理完成', info);
+        handleMapData(info)
+        mapModel.current = info;
+    }, [mapInfo, handleMapData])
 
+    const handleMapData = useCallback(async (newMapInfo) => {
+        const { chargePos, robotPos, pathData, roomInfos, roomChain } = newMapInfo;
+        if (isUnmount) return;
 
-    /** 事件 */
-    function MapEventsHandle() {
-        const map = useMapEvents({
-            zoomstart: (e) => {
-                mapReadyStatusRef.current = false;
-            },
-            zoomend: (e) => {
-                mapReadyStatusRef.current = true;
-                logger.d('map zoomend zoom:', e.target.getZoom());
-                // mapTransRef.current.scale = e.target.getZoom();
-                // store.setMapScale(mapTransRef.current.scale);
-            },
-            movestart: (e) => {
-                onMapMoveStart && onMapMoveStart();
-            },
-            move: (e) => {
-                mapReadyStatusRef.current = false;
-                // 设置最大边界
-                // setupMaxRect();
-            },
-            moveend: (e) => {
-                mapReadyStatusRef.current = true;
-                setTimeout(() => {
-                    // mapRef.current && mapRef.current.dragging.enable();
-                    onMapMoveEnd && onMapMoveEnd();
-                }, 300);
-            },
-            load: (e) => {
+        await drawMapGround(newMapInfo);
+        // 绘制房间名称+区域+面板
+        handleRoom(roomInfos, roomChain);
 
-            },
-            error: (e) => {
-                logger.d('map error:', e);
-                onMapMoveEnd && onMapMoveEnd();
-            }
+        drawCharge(chargePos);
+
+        drawRobot(robotPos);
+
+        drawPath();
+
+        logger.d('地图绘制完成')
+
+    }, [drawCharge, drawMapGround, drawPath, drawRobot, drawRoom, isUnmount])
+
+    // 地图
+    const drawMapGround = useCallback(async (newMapInfo) => {
+        const { minX, minY, sizeX, sizeY, map, lz4Len } = newMapInfo.mapData;
+
+        // 1, 从内存取
+        if (newMapInfo.upload < mapModel.current?.upload) {
+            logger.d('过滤渲染旧图', newMapInfo.upload, mapModel.upload);
+            return;
+        }
+
+        const mapChanged = newMapInfo.begin != mapModel.current?.begin || newMapInfo.mapId != mapModel.current?.mapId;
+        if (newMapInfo.upload === mapModel.current?.upload && !mapChanged) {
+            logger.d('过滤渲染相同图', newMapInfo.mapId);
+            return;
+        }
+        // 从本地取图或云端数据重新生成
+        const res = await fetchMapImage({
+            perfectScale: !mapModel.current ? 2 : 1, // 第一次,加载1倍图. 加快首页图速度
+            mapId: newMapInfo.mapId,
+            map,
+            lz4Len,
+            minX,
+            minY,
+            sizeX,
+            sizeY,
+            roomInfos: newMapInfo.roomInfos ?? []
         });
-        return null;
-    }
-    /** private */
 
-    // const BoundsPoint = () => {
-    //     return <Observer>{() =>
-    //         <>
-    //             <Circle center={L.latLng(0, 0)} radius={1} fillOpacity={1} fillColor='#FF0000' color="#FF0000" />
-    //             <Circle center={L.latLng(0, 600)} radius={1} fillOpacity={1} fillColor='#00FF00' color="#00FF00" />
-    //             <Circle center={L.latLng(600, 0)} radius={1} fillOpacity={1} fillColor='#0000FF' color="#0000FF" />
-    //             <Circle center={L.latLng(400, 400)} radius={1} fillOpacity={1} fillColor='#FF0000' color="#FF0000" />
-    //             <Circle center={L.latLng(600, 600)} radius={1} fillOpacity={1} fillColor='#FF0000' color="#000000" />
-    //         </>
-    //     }</Observer>;
-    // }
+        if (res) {
+            logger.d('地图图片渲染生成', res);
+            mapBase64Image.current = res.base64Image;
+            // 绘制
+            if (layersRef.current.mapLayer) {
+                layersRef.current.mapLayer.remove();
+            }
+            //由于设备返回地图图片的minY和maxY是上下镜像的，这里需要用Y-总高度。
+            const mapLayerBounds = L.latLngBounds(L.latLng(res.minPoint.y - sizeY, res.minPoint.x), L.latLng(res.maxPoint.y - sizeY, res.maxPoint.x));
+            layersRef.current.mapLayer = L.imageOverlay(mapBase64Image.current, mapLayerBounds, { zIndex: MapZIndex.map }).addTo(mapRef.current);
+            // 更新有效地图范围
+            resetMapValidRect([res.minPoint, res.maxPoint]);
+            // 更新 画布位置和缩放 适应 fitbounds
+            let corretBounds = getCorrectBound(mapZoonRectRef.current, layersRef.current.mapLayer.getBounds());
+            mapRef.current.fitBounds(corretBounds);
+            calculateMinMaxScale();
+
+
+        } else {
+            logger.e('地图图片渲染生成失败');
+        }
+    }, []);
+
+    // 根据目前的地图大小，在缩放范围内，计算画布合适的默认缩放比例
+    function calculateMinMaxScale() {
+        // let mapZoonRect = { max: 6, min: 4, default: 4.0, showRatio: 0.9};
+        let currentZoom = mapRef.current.getZoom();
+        // mapZoonRectRef.current = currentZoom;
+        let maxZoom;
+        let minZoom;
+        if (currentZoom < mapZoonRectRef.current.min) {
+            logger.d(`Jack--55555--->地图最优显示时,已经小于最小缩放限制 ${currentZoom} min:${mapZoonRectRef.current.min}`);
+            mapZoonRectRef.current.min = minZoom;
+            minZoom = currentZoom;
+        } else {
+            minZoom = currentZoom * 0.5;
+        }
+        if (currentZoom > mapZoonRectRef.current.max) {
+            logger.d(`Jack--55555--->地图最优显示时,已经大于最大缩放限制 ${currentZoom} min:${mapZoonRectRef.current.max}`);
+            mapZoonRectRef.current.max = maxZoom;
+        } else {
+            maxZoom = currentZoom * 1.5;
+        }
+
+        maxZoom = maxZoom > mapZoonRectRef.current.max ? mapZoonRectRef.current.max : maxZoom;
+        minZoom = minZoom < mapZoonRectRef.current.min ? mapZoonRectRef.current.min : minZoom;
+
+        logger.d(`Jack--55555--->重新计算缩放比的最大和最小限制---> currentZoom:${currentZoom} minZoom:${minZoom} maxZoom:${maxZoom} `);
+        mapRef.current.setMinZoom(minZoom);
+        mapRef.current.setMaxZoom(maxZoom);
+    }
+
+    const resetMapValidRect = ([minPoint, maxPoint]) => {
+        let leftTop = { lng: minPoint.x, lat: maxPoint.y };
+        let leftBottom = { lng: minPoint.x, lat: minPoint.y };
+        let rightBottom = { lng: maxPoint.x, lat: minPoint.y };
+        let rightTop = { lng: maxPoint.x, lat: maxPoint.y };
+        let centerP = { lng: (minPoint.x + maxPoint.x) / 2, lat: (minPoint.y + maxPoint.y) / 2 };
+
+        mapValidRectRef.current = {
+            leftTop,
+            leftBottom,
+            rightBottom,
+            rightTop,
+            centerP,
+            validSizeX: rightTop.lng - leftTop.lng,
+            validSizeY: leftTop.lat - leftBottom.lat
+        }
+
+        {
+            // 地图有效区的四个顶点
+            L.circle(leftTop, { color: "#FF0000", fillColor: '#FF0000', fillOpacity: 1, radius: 0.01 }).addTo(mapRef.current);
+            L.circle(leftBottom, { color: "#00FF00", fillColor: '#00FF00', fillOpacity: 1, radius: 0.01 }).addTo(mapRef.current);
+            L.circle(rightBottom, { color: "#0000FF", fillColor: '#0000FF', fillOpacity: 1, radius: 0.01 }).addTo(mapRef.current);
+            L.circle(rightTop, { color: "#0000FF", fillColor: '#0000FF', fillOpacity: 1, radius: 0.01 }).addTo(mapRef.current);
+            // 中心
+            L.circle(centerP, { color: "#000000", fillColor: '#FF0000', fillOpacity: 1, radius: 0.01 }).addTo(mapRef.current);
+        }
+    }
+    // 房间
+    const handleRoom = useCallback((roomInfos, roomChain) => {
+        if (!isShowAreaTips || isNull(roomChain) || isNull(roomInfos)) return;
+
+        roomChainsRef.current = [];
+        roomChain.forEach((room, index) => {
+            const PTS = room.PTS;
+            let chainlatLng = [];
+            PTS.forEach((pt) => {
+                const mapPoint = roomToCRS([pt.x, pt.y]);
+                let roomPoint = L.latLng([mapPoint.y, mapPoint.x]);
+                chainlatLng.push(roomPoint);
+            })
+
+            roomChainsRef.current.push(chainlatLng);
+            _drawRoom(roomInfos[index], chainlatLng);
+        })
+    }, [_drawRoom, isShowAreaTips]);
+
+    // 绘制单个房间(选择框)
+    const _drawRoom = useCallback((info, chainlatLng) => {
+        if (isNull(info) || isNull(chainlatLng)) return;
+        // 房间清洁状态
+        const isRoomClean = cleanMode === CleanModeType.Room;
+
+        // 房间边界图层绘制
+        layersRef.current.roomsLayer.forEach((layer) => {
+            layer.remove();
+        });
+        layersRef.current.roomsLayer = [];
+        // 如果当前是选择房间状态
+        if (isRoomClean) {
+            mapRef.current.createPane(`roomNormal${info.id}`);
+            mapRef.current.getPane(`roomNormal${info.id}`).style.zIndex = 720;
+        }
+        // 房间多边形
+        let polygonRoom = L.polygon(chainlatLng, {
+            // color: "#fff",
+            stroke: true,
+            // color: MAP_COLOR.border,
+            // fillColor: MAP_COLOR.normal,
+            color: 'rgba(255, 255, 255, 0)',
+            fillColor: 'rgba(255, 255, 255, 0)',
+            weight: 1.5,
+            fillOpacity: 1,
+            attribution: `${info.id}+polygonRoom`,
+            pane: isRoomClean ? `roomNormal${info.id}` : undefined
+        })
+        layersRef.current.roomsLayer.push(polygonRoom);
+
+
+        //
+        // 判断房间是否被选中，选中需要显示清扫信息气泡和房间阴影
+        let polygonSelected = null;
+        const isSelected = getSelectedRoom(info.id);
+        if (isSelected) { // 选中的房间
+            // 添加房间阴影
+            mapRef.current.createPane(`roomSelected${info.id}`);
+            mapRef.current.getPane(`roomSelected${info.id}`).style.zIndex = 720;
+
+            polygonSelected = L.polygon(chainlatLng, {
+                stroke: true,
+                color: MAP_COLOR.border,
+                weight: 1.5,
+                fillColor: MAP_COLOR.selected1,
+                fillOpacity: 1,
+                attribution: `${info.id}+polygon`,
+                pane: `roomSelected${info.id}`
+            })
+            layersRef.current.roomsLayer.push(polygonSelected);
+
+
+            // 添加房间信息气泡（自定义跟普通区分）
+            let customHtml, icon;
+            if (isRoomClean) {
+                customHtml = roomInfoCard(
+                    result.num,
+                    result.RN,
+                    result.cleanTimes,
+                    result.wind,
+                    result.sweepMode,
+                    result.water
+                );
+                icon = L.divIcon({
+                    html: customHtml,
+                    className: "myiconSelect",
+                    iconSize: [12 * (info.RN.length + 1) + 2, 12],
+                    iconAnchor: [12 * info.RN.length, 20],
+                });
+            } else {
+                icon = L.divIcon({
+                    html: `<div class=roomName><img class=icon src=${require("./assets/img/selected.png")
+                        }></img><div class=name>${info.RN}</div></div>`,
+                    className: "myiconSelect",
+                    iconSize: [12 * (info.RN.length + 1) + 2, 12],
+                    iconAnchor: [12 * info.RN.length, 6],
+                });
+            }
+            map.createPane(`roomNameSelected${info.id}`);
+            map.getPane(`roomNameSelected${info.id}`).style.zIndex = 722;
+            iconRect = L.marker(poistion, {
+                attribution: `${info.id}+iconRect`,
+                icon: icon,
+                zIndex: MapZIndex.iconName,
+                pane: `roomNameSelected${info.id}`
+            }).addTo(map);
+            roomNameLayer.push(iconRect);
+        } else { // 未选择
+
+
+        }
+
+        // layersRef.current.roomNameLayer.forEach((layer) => {
+        //     layer.remove();
+        // });
+        // layersRef.current.roomNameLayer = [];
+
+    }, [cleanMode]);
+
+    function getSelectedRoom(id) {
+        if (selectedRooms && selectedRooms.length > 0) {
+            return selectedRooms.find(room => room.id === id);
+        }
+        return false;
+    }
+
+
+    // 基站
+    const drawCharge = useCallback((chargePos) => {
+        if (!isShowBaseRing || !chargePos) return;
+        // 绘制
+        const makerPoint = L.latLng(chargePos.y, chargePos.x);
+        let stationIcon = L.divIcon({
+            html: getChargeIcon(chargePos.a),
+            iconSize: [24, 30],
+            fillOpacity: 1,
+        });
+        // 有旧的先移除
+        if (layersRef.current.chargeStationMarker) {
+            layersRef.current.chargeStationMarker.remove();
+        }
+        layersRef.current.chargeStationMarker = L.marker(makerPoint, { icon: stationIcon, zIndex: MapZIndex.chareBase })
+            .addTo(mapRef.current);
+
+
+    }, [isShowBaseRing]);
+
+    // 机器人
+    const drawRobot = useCallback((robotPos) => {
+        if (!isShowCurPosRing || !robotPos) return;
+        // 绘制
+        const makerPoint = L.latLng(robotPos.y, robotPos.x)
+        let robotIcon = L.divIcon({
+            html: getRobotIcon(robotPos.a),
+            iconSize: [24, 30],
+            fillOpacity: 1,
+        });
+        // 有旧的先移除
+        if (layersRef.current.robotMarker) {
+            layersRef.current.robotMarker.remove();
+        }
+        layersRef.current.robotMarker = L.marker(makerPoint, { icon: robotIcon, zIndex: MapZIndex.robot })
+            .addTo(mapRef.current);
+    }, [isShowCurPosRing]);
+
+    // 虚拟区域
+    const drawVirtual = useCallback(() => {
+    }, []);
+
+    // 路径
+    const drawPath = useCallback(() => {
+    }, []);
 
     return (
-        <MapContainer
-            zoomControl={true}
-            style={{ height: '100%', width: '100%' }}
-            attributionControl={false}
-            zoomSnap={0.01}//缩放精度
-            zoom={1}// 默认
-            minZoom={-1}
-            maxZoom={2}
-            crs={L.CRS.Simple}// 笛卡尔坐标系 y上 x右
-            editable={true}
-            touchZoom={'center'}
-            bounceAtZoomLimits={false}
-            debounceMoveend={false}
-            doubleClickZoom={false}
-            easeLinearity={0.0}
-            bounds={L.latLngBounds([0, 0], [800, 800])} //初始画布
-            // center={L.latLng(400, 400)} // 初始中心点
-            renderer={L.canvas({ padding: 0.05 })}
-        >
+        <div className="mapBox">
+            <div id="map" style={{ width: '100%', height: '100%', left: 0, top: 0 }} />
+        </div>
+    );
 
-            {/* 地图 */}
-            <Observer>
-                {() => <ImageOverlay
-                    // url="http://www.lib.utexas.edu/maps/historical/newark_nj_1922.jpg"
-                    url={store.mapBase64Image}
-                    bounds={store.mapBoundslatLng}
-                    opacity={0.5}
-                    zIndex={MapZIndex.map}
-                />
-                }</Observer>
-            {/* 轨迹 */}
-
-            {/* 图标 */}
-            {/* <RobotIconMarker position={store.robotPos.latLng} phi={store.robotPos.angle} zIndex={MapZIndex.robot} />
-            <ChargeIconMarker position={store.chargePos.latLng} phi={store.chargePos.angle} zIndex={MapZIndex.chareBase} /> */}
-
-
-
-
-            {/* <LocationMarker /> */}
-            {/* 左下角 */}
-            <Circle center={L.latLng(0, 0)} radius={10} fillOpacity={1} fillColor='blue' color="#FF0000" />
-            {/* <Circle center={L.latLng(0, 800)} radius={10} fillOpacity={1} fillColor='#00FF00' color="#00FF00" />
-            <Circle center={L.latLng(800, 0)} radius={10} fillOpacity={1} fillColor='#0000FF' color="#0000FF" /> */}
-            <Circle center={L.latLng(400, 400)} radius={10} fillOpacity={1} fillColor='#FF0000' color="#FF0000" />
-            <Circle center={L.latLng(800, 800)} radius={10} fillOpacity={1} fillColor='red' color="#000000" />
-            <MapEventsHandle />
-        </MapContainer>)
 
 }
 

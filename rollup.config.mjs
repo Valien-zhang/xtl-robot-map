@@ -9,6 +9,7 @@ import del from "rollup-plugin-delete";
 import serve from 'rollup-plugin-serve';
 import livereload from 'rollup-plugin-livereload';
 import replace from '@rollup/plugin-replace';
+import url from '@rollup/plugin-url';
 
 
 export default {
@@ -59,10 +60,19 @@ export default {
         }),
         del({ targets: 'dist/*', verbose: true }),
         serve({
-            contentBase: "", //服务器启动的文件夹，默认是项目根目录，需要在该文件下创建index.html
+            contentBase: '',  // 指定 public 作为静态资源路径
             port: 8020,
         }),
         livereload('dist'),
+        url({
+            // 限制文件大小，小于 10kb 的文件将转换为 base64
+            limit: 10 * 1024,
+            // 包含图片的文件夹
+            include: ['**/*.png', '**/*.jpg', '**/*.jpeg', '**/*.svg'],
+            // 输出的文件夹
+            emitFiles: true,
+            fileName: '[name][hash][extname]'
+        })
     ],
     external: ['react'], // 将这些库排除在打包之外
 

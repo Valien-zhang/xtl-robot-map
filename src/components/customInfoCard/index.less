@@ -1,0 +1,57 @@
+.customInfocardcontainer {
+  display: flex;
+  flex-direction: column;
+  padding: 9px 8px;
+  width: max-content;
+  background: rgba(255, 255, 255, 0.5600);
+  box-shadow: 0px 2px 6px 0px rgba(41, 117, 180, 0.15);
+  border-radius: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(14px);
+
+  .name {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+
+    .numIcon {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      background: url('./images/home_num_bg.png') no-repeat;
+      background-size: 100% 100%;
+
+      font-size: 11px;
+      font-family: PingFangSC-Medium, PingFang SC;
+      font-weight: 500;
+      color: #FFFFFF;
+      line-height: 16px;
+
+      text-align: center;
+      margin-right: 4px;
+    }
+
+    .times {
+      margin-left: 4px;
+    }
+  }
+
+  .info {
+    display: flex;
+    flex-direction: row;
+    margin-top: 6px;
+
+    .img {
+      width: 20px;
+      height: 20px;
+      margin-right: 6px;
+    }
+
+    // .img:first-child {
+    //   margin-right: 6px;
+    // }
+    .img:last-child {
+      margin-right: 0px;
+    }
+  }
+}
