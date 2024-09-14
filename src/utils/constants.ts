@@ -54,6 +54,47 @@ export enum WORK_STATUS {
   ChargeAsleep = 'ChargeAsleep', // 充电完成休眠
 }
 
+/**
+ * 水量
+ */
+export enum WATER_LEVEL {
+  Low = 0,
+  Mid,
+  High,
+}
+/**
+ * 吸力
+ */
+export enum WIND_LEVEL {
+  Quiet = 0, // 安静档
+  Auto, //标准
+  Strong, //强劲
+  Max, //超强
+}
+// 路线偏好
+export enum RoutePrefer {
+  Fast = 0, //快速
+  Daily, //日常
+  Fine, // 精细
+}
+/**
+ * 工作模式
+ */
+export enum SWEEP_MODE {
+  SweepMop = 0, //边扫边拖
+  Sweep, // 仅扫地
+  Mop, //仅拖地
+  SweepThenMop, //先扫后拖
+  Custom, //定制
+}
+/**
+ * 清洁次数
+ */
+export enum CLEAN_TIMES {
+  One = 1,
+  Two = 2,
+}
+
 
 /**
  * 首页是否能进入划区编辑

@@ -54,7 +54,6 @@ export function getMapDataPoints(map, lz4Len) {
 		const decodedString = base64js.toByteArray(map);
 		const data = Lz4.uncompress(decodedString, lz4Len);
 		const uint8Array = new Uint8Array(data);
-		logger.d('uint8Array in useMapPoints succ', uint8Array.length);
 		return uint8Array;
 	} catch (error) {
 		logger.e('Error in useMapPoints:', error);
@@ -77,11 +76,9 @@ export function Uint8ToPNGBase64(width, height, u8Arr) {
 			canvas.width = width;
 			canvas.height = height;
 			const ctx = canvas.getContext('2d');
-
 			// 将 Uint8Array 转换为 ImageData 对象
 			const imageData = new ImageData(new Uint8ClampedArray(u8Arr), width, height);
 			ctx.putImageData(imageData, 0, 0);
-
 			// 获取 Base64 编码的 PNG 图片
 			const base64PNG = canvas.toDataURL('image/png');
 			resolve(base64PNG);

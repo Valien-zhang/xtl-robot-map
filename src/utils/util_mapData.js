@@ -5,46 +5,59 @@ import { SMapColorConfig } from './constants';
 import { getMapDataPoints, perfectMapData, Uint8ToPNGBase64 } from './util_function';
 import { isNull, generateMd5Key } from "./util_function";
 /**
- * 地图坐标转换为 x上y右  笛卡尔坐标 y上 x右 
- *  x                 y 
+ *  地图数据的坐标 x上y右 转换为 笛卡尔坐标 y上 x右 
+ *                  
+ *                  
+ *                  
+ * x                 
+ * |                |y
  * |                |
  * |                |
- * |                |
- * |_ _ _ _ _ y  => |_ _ _ _ _ _ x
+ * |_ _ _ _ _ y  => |--------x
+ * @param {[number, number]} param0 
+ * @returns {{x:number, y:number}} 笛卡尔坐标系下的xy
  */
-export function mapToCRS([x, y]) {
-    return [y, x];
-}
-
-
-export function CRSToMap([x, y]) {
-    return [y, x];
+function mapToCRS([ox, oy]) {
+    return { x: oy, y: ox };
+    // return { x: ox, y: oy };
 }
 
 /**
- * 将房间坐标系转换到笛卡尔坐标系 (房间传过来的数据跟地图坐标系不同)
+ * 
+ * @param {[number, number]} param0 
+ * @returns {{x:number, y:number}} 笛卡尔坐标系下的xy
+ */
+function CRSToMap([ox, oy]) {
+    return { x: oy, y: ox };
+}
+
+/**
+ * 非地图数据的坐标 ,京蛙传过来是屏幕坐标系-
+ *                 
+ * |----------x    |y
+ * |               |
+ * |               |
+ * |y           => |--------x
  * @param {[number, number]} ox oy 房间坐标系下的xy
  * @param {number} size 地图的size，default is 800
- * @returns {[number, number]} 笛卡尔坐标系下的xy
+ * @returns {{x:number, y:number}} 笛卡尔坐标系下的xy
  */
-export function roomToCRS([ox, oy], size = 800) {
-    ox = Number(ox);
-    oy = Number(oy);
-    return [oy, size - ox];
+function roomToCRS([ox, oy], size = 800) {
+    // return { x: Number(ox), y: size - Number(oy) };
+    return { x: Number(oy), y: size - Number(ox) };
+    // return { x: Number(oy), y: Number(ox) + size };
 }
 
 /**
  * 将笛卡尔坐标系下的xy转换到房间坐标系下 
  * @param {[number, number]} ox oy 笛卡尔坐标系下的xy
  * @param {number} size 地图的size，default is 800
- * @returns {[number, number]} 房间坐标系下的xy
+ * @returns {{x:number, y:number}} 房间坐标系下的xy
  */
-export function CRSToRoom([ox, oy], size = 800) {
-    ox = Number(ox);
-    oy = Number(oy);
+function CRSToRoom([ox, oy], size = 800) {
     return {
-        x: size - ox,
-        y: oy
+        x: Number(ox),
+        y: size - Number(oy)
     };
 
 }
@@ -160,44 +173,22 @@ const getMapImage = async (sizeX, sizeY, mapPoints, mapColor, cacheKey, mapPerfe
  */
 async function mapToImage(sizeX, sizeY, mapPoints, mapColor, mapPerfectScale) {
     var rgbaArrayT = new Array(sizeX * sizeY * 4);
-    for (let y = 0; y < sizeY; y++) {
-        for (let x = 0; x < sizeX; x++) {
-            let ind = y + x * sizeY;
+
+    for (let x = 0; x < sizeX; x++) {
+        for (let y = 0; y < sizeY; y++) {
+            let ind = x + y * sizeX;
             let value = mapPoints[ind] ?? 0;
-            //   let value = valueT > 127 ? (valueT - 256) : valueT; // uint8->int8
-            //   colorDic['' + value] = '' + value;
-            // 获取房间值
-            //   const ob = getMapValue(value);// 分层
-            //   value = ob.value;
-
-            // 地毯
-            //   if ((value == SCCMapColor.patch_carpet || value == SCCMapColor.carpet)) {
-            //     // color = carpeDisplayStatus ? SMapColorConfig.carpetColor : SMapColorConfig.discoverColor;
-            //     color = SMapColorConfig.discoverColor;
-            //   } else if (value == SCCMapColor.wall) {
-            //     color = SMapColorConfig.wallColor;
-            //   } else if (value == SCCMapColor.background) {
-            //     color = SMapColorConfig.bgColor;
-            //   } else if (value == SCCMapColor.discover || value == SCCMapColor.cover || value == SCCMapColor.deepCover) {
-            //     color = SMapColorConfig.discoverColor;
-            //   } else if (value >= SCCMapColor.roomBegin && value <= SCCMapColor.roomEnd) {//10-59
-            //     if (carpeDisplayStatus && ob.type == SMapValueType.negative && isCarpetXY(x, y)) {
-            //       color = SMapColorConfig.carpetColor;
-            //     } else {
-            //       // color = SMapColorConfig.roomColor;
-            //       // 根据颜色id获取对应的颜色
-            //       color = getRoomColor(value, x, y);
-            //       // SSlog('房间颜色------', value, color)
-            //     }
-            //   }
-            // color = SMapColorConfig.roomColor;
-            // // 根据颜色id获取对应的颜色
-            // color = getRoomColor(value, x, y);
-            // // SSlog('房间颜色------', value, color)
-
             setRGBA(rgbaArrayT, ind, mapColor[value]);
         }
     }
+    // for (let y = 0; y < sizeY; y++) { // 从顶部到底部遍历每一行
+    //     // 在每一行中从左到右遍历每一个像素  
+    //     for (let x = 0; x < sizeX; x++) {
+    //         let ind = x + y * sizeX;
+    //         let value = mapPoints[ind] ?? 0; // 根据mapPoints获取当前像素的值  
+    //         setRGBA(rgbaArrayT, (sizeY - y - 1) * sizeX + x, mapColor[value]); // 计算上下翻转后的索引，填充数组
+    //     }
+    // }
 
     let base64 = '';
     try {
@@ -229,58 +220,7 @@ export function setRGBA(rgba, i, color, four = true) {
         rgba[i * 3 + 2] = color[2];
     }
 }
-/**
- * 
- * @param {*} graphRelations 相邻关系 [{"3": [Array]}]
- * @param {*} colors 配色 [""]
- * @returns 图形配色
- */
-function colorGraph(graphRelations) {
-    const coloredNodes = {};
-    const colors = [0, 1, 2, 3];
-    const colorUsage = colors.reduce((acc, color) => {
-        acc[color] = 0;
-        return acc;
-    }, {});
 
-    function canColor(node, color) {
-        const neighbors = graphRelations.find((item) => item[node])?.[node] ?? [];
-        return !neighbors.some((neighbor) => coloredNodes[neighbor] === color);
-    }
-
-    function colorNode(node) {
-        const availableColors = colors.sort((a, b) => colorUsage[a] - colorUsage[b]);
-
-        for (const color of availableColors) {
-            if (canColor(node, color)) {
-                coloredNodes[node] = color;
-                colorUsage[color]++;
-                const neighbors = graphRelations.find((item) => item[node])?.[node] ?? [];
-                neighbors.forEach((neighbor) => {
-                    if (!coloredNodes[neighbor]) {
-                        colorNode(neighbor);
-                    }
-                });
-                break;
-            }
-        }
-    }
-
-    graphRelations.forEach((relation) => {
-        const node = Object.keys(relation)[0];
-        if (!coloredNodes[node]) {
-            colorNode(node);
-        }
-    });
-    return coloredNodes;
-}
-
-/**
- * 转化禁区数据 string -> JSON
- * @param {string} virtualStr "1,1,x1,y1,x2,y2;2,2,x1,y1,x2,y2,x3,y3,x4,y4"... id, type
- * @param {number} mapId 
- * @returns {Array<IVirtualModel>} walls
- */
 /**
  * 转化禁区数据 string -> JSON
  * @param {string} virtualStr "1,1,x1,y1,x2,y2;2,2,x1,y1,x2,y2,x3,y3,x4,y4"... id, type
@@ -344,14 +284,12 @@ export function paresMapData(data) {
         };
         // mapId
         mapInfo.mapId = data.mapId;
-        // logger.d('当前地图更新', JSON.stringify(data));
         // MapData
         if (data?.fields?.length > 0) {
             if (!isNull(data.fields[0])) {
                 try {
-                    const mapDataStr = atob(data.fields[0]);
+                    const mapDataStr = window.atob(data.fields[0]);
                     mapInfo.mapData = JSON.parse(mapDataStr);
-                    // logger.d('当前地图数据：', { ...mapInfo.mapData, map: '***', mapId: mapInfo.mapId });
 
                 } catch (error) {
                     logger.e('mapData 解析数据时出错：', error);
@@ -363,9 +301,8 @@ export function paresMapData(data) {
         if (data.fields?.length > 1) {
             if (!isNull(data.fields[1])) {
                 try {
-                    const mapTraceStr = atob(data.fields[1]);
+                    const mapTraceStr = window.atob(data.fields[1]);
                     mapInfo.mapTraceData = JSON.parse(mapTraceStr);
-                    logger.d('当前地图轨迹:', mapInfo.mapTraceData.totalCount);
                 } catch (error) {
                     logger.e('当前地图mapTraceData 解析数据时出错：', error);
                 }
@@ -375,7 +312,6 @@ export function paresMapData(data) {
         if (data.fields?.length > 2) {
             try {
                 mapInfo.pos = JSON.parse(data.fields[2]);
-                logger.d('当前地图------------pos', mapInfo.pos);
             } catch (error) {
                 logger.e('当前地图解析机器位置出错:', error);
             }
@@ -385,8 +321,6 @@ export function paresMapData(data) {
             if (!isNull(data.fields[3])) {
                 try {
                     const areas = JSON.parse(data.fields[3]);
-                    logger.d('当前地图------------areas', areas);
-
                     if (Array.isArray(areas) && areas.length) {
                         mapInfo.areas = areas?.map((area) => {
                             // 转换成[]
@@ -396,7 +330,6 @@ export function paresMapData(data) {
                             // 默认name
                             if (area.name === '') {
                                 area.name = `房间${area.id}`; //  keyword257: "房间",
-                                // area.name=`한국인한국인한국인한국인한국인한국인한국인`;
                             }
                             // 默认分类
                             if (area.type === '') {
@@ -415,13 +348,9 @@ export function paresMapData(data) {
         if (data.fields?.length > 4) {
             if (!isNull(data.fields[4])) {
                 try {
-                    const wallStr = atob(data.fields[4]);
-                    // logger.d('当前地图------------虚拟墙str', wallStr);
-
+                    const wallStr = window.atob(data.fields[4]);
                     const walls = stringConvertVirtuals(wallStr, mapInfo.mapId);
                     mapInfo.virtualWalls = walls;
-                    logger.d('当前地图------------虚拟墙变化', wallStr);
-
                 } catch (error) {
                     logger.e('当前地图解析虚拟墙追踪数据出错：', error);
                 }
@@ -431,13 +360,9 @@ export function paresMapData(data) {
         if (data.fields?.length > 5) {
             if (!isNull(data.fields[5])) {
                 try {
-                    const wallStr = atob(data.fields[5]);
-                    // logger.d('当前地图------------mop虚拟墙 str', wallStr);
-
+                    const wallStr = window.atob(data.fields[5]);
                     const walls = stringConvertVirtuals(wallStr, mapInfo.mapId);
                     mapInfo.mopWalls = walls;
-                    logger.d('当前地图------------mop虚拟墙', walls);
-
                 } catch (error) {
                     logger.e('当前地图解析虚拟墙追踪数据出错：', error);
                 }
@@ -447,13 +372,9 @@ export function paresMapData(data) {
         if (data.fields?.length > 6) {
             if (!isNull(data.fields[6])) {
                 try {
-                    const wallStr = atob(data.fields[6]);
-                    // logger.d('当前地图------------mop虚拟墙 str', wallStr);
-
+                    const wallStr = window.atob(data.fields[6]);
                     const walls = stringConvertVirtuals(wallStr, mapInfo.mapId);
                     mapInfo.carpet = walls;
-                    logger.d('当前地图------------地毯数据', walls);
-
                 } catch (error) {
                     logger.e('当前地图解析虚拟墙地毯追踪数据出错：', error);
                 }
@@ -464,33 +385,210 @@ export function paresMapData(data) {
         if (data.fields?.length > 7) {
             if (!isNull(data.fields[7])) {
                 try {
-                    const wallStr = atob(data.fields[7]);
-                    // logger.d('当前地图------------mop虚拟墙 str', wallStr);
-
+                    const wallStr = window.atob(data.fields[7]);
                     const walls = stringConvertVirtuals(wallStr, mapInfo.mapId);
                     mapInfo.thres = walls;
-                    logger.d('当前地图------------thres数据', walls);
-
                 } catch (error) {
                     logger.e('当前地图解析thres追踪数据出错：', error);
                 }
             }
         }
 
+        // carpetPrefer
         if (data.fields?.length > 8) {
             if (!isNull(data.fields[8])) {
                 try {
-                    // logger.d('当前地图------------mop虚拟墙 str', wallStr);
                     mapInfo.carpetPrefer = data.fields[8];
-                    logger.d('当前地图------------tcarpetPrefer数据', mapInfo.carpetPrefer);
-
                 } catch (error) {
                     logger.e('当前地图解析thres追踪数据出错：', error);
                 }
             }
         }
 
-        return translateMapDataKey(mapInfo);
+        //  测试数据:  
+        mapInfo.roomChain = [{
+            id: 4, PTS: [{//  
+                "x": 390,// 注意:此处的 x, y 为 全图(默认800*800，会扩充)中的行和列，左下为(0, 0)
+                "y": 341,
+                "v": 4294967295 // 用于展示门的位置，和判断指哪点、划区的合法性
+            }, {
+                "x": 391,
+                "y": 341,
+                "v": 4294967295
+            }, {
+                "x": 392,
+                "y": 341,
+                "v": 4294967295
+            }, {
+                "x": 393,
+                "y": 341,
+                "v": 4294967295
+            }]
+        }, {
+            id: 5, PTS: [{//  
+                "x": 390,// 注意:此处的 x, y 为 全图(默认800*800，会扩充)中的行和列，左下为(0, 0)
+                "y": 341,
+                "v": 4294967295 // 用于展示门的位置，和判断指哪点、划区的合法性
+            }, {
+                "x": 391,
+                "y": 341,
+                "v": 4294967295
+            }, {
+                "x": 392,
+                "y": 341,
+                "v": 4294967295
+            }, {
+                "x": 393,
+                "y": 341,
+                "v": 4294967295
+            }]
+        }, {
+            id: 6, PTS: [{//  
+                "x": 390,// 注意:此处的 x, y 为 全图(默认800*800，会扩充)中的行和列，左下为(0, 0)
+                "y": 341,
+                "v": 4294967295 // 用于展示门的位置，和判断指哪点、划区的合法性
+            }, {
+                "x": 391,
+                "y": 341,
+                "v": 4294967295
+            }, {
+                "x": 392,
+                "y": 341,
+                "v": 4294967295
+            }, {
+                "x": 393,
+                "y": 341,
+                "v": 4294967295
+            }]
+        }, {
+            id: 7, PTS: [{//  
+                "x": 390,// 注意:此处的 x, y 为 全图(默认800*800，会扩充)中的行和列，左下为(0, 0)
+                "y": 341,
+                "v": 4294967295 // 用于展示门的位置，和判断指哪点、划区的合法性
+            }, {
+                "x": 391,
+                "y": 341,
+                "v": 4294967295
+            }, {
+                "x": 392,
+                "y": 341,
+                "v": 4294967295
+            }, {
+                "x": 393,
+                "y": 341,
+                "v": 4294967295
+            }]
+        }, {
+            id: 8, PTS: [{//  
+                "x": 390,// 注意:此处的 x, y 为 全图(默认800*800，会扩充)中的行和列，左下为(0, 0)
+                "y": 341,
+                "v": 4294967295 // 用于展示门的位置，和判断指哪点、划区的合法性
+            }, {
+                "x": 391,
+                "y": 341,
+                "v": 4294967295
+            }, {
+                "x": 392,
+                "y": 341,
+                "v": 4294967295
+            }, {
+                "x": 393,
+                "y": 341,
+                "v": 4294967295
+            }]
+        }, {
+            id: 9, PTS: [{//  
+                "x": 390,// 注意:此处的 x, y 为 全图(默认800*800，会扩充)中的行和列，左下为(0, 0)
+                "y": 341,
+                "v": 4294967295 // 用于展示门的位置，和判断指哪点、划区的合法性
+            }, {
+                "x": 391,
+                "y": 341,
+                "v": 4294967295
+            }, {
+                "x": 392,
+                "y": 341,
+                "v": 4294967295
+            }, {
+                "x": 393,
+                "y": 341,
+                "v": 4294967295
+            }]
+        }, {
+            id: 10, PTS: [{//  
+                "x": 390,// 注意:此处的 x, y 为 全图(默认800*800，会扩充)中的行和列，左下为(0, 0)
+                "y": 341,
+                "v": 4294967295 // 用于展示门的位置，和判断指哪点、划区的合法性
+            }, {
+                "x": 391,
+                "y": 341,
+                "v": 4294967295
+            }, {
+                "x": 392,
+                "y": 341,
+                "v": 4294967295
+            }, {
+                "x": 393,
+                "y": 341,
+                "v": 4294967295
+            }]
+        }, {
+            id: 11, PTS: [{//  
+                "x": 390,// 注意:此处的 x, y 为 全图(默认800*800，会扩充)中的行和列，左下为(0, 0)
+                "y": 341,
+                "v": 4294967295 // 用于展示门的位置，和判断指哪点、划区的合法性
+            }, {
+                "x": 391,
+                "y": 341,
+                "v": 4294967295
+            }, {
+                "x": 392,
+                "y": 341,
+                "v": 4294967295
+            }, {
+                "x": 393,
+                "y": 341,
+                "v": 4294967295
+            }]
+        }, {
+            id: 12, PTS: [{//  
+                "x": 390,// 注意:此处的 x, y 为 全图(默认800*800，会扩充)中的行和列，左下为(0, 0)
+                "y": 341,
+                "v": 4294967295 // 用于展示门的位置，和判断指哪点、划区的合法性
+            }, {
+                "x": 391,
+                "y": 341,
+                "v": 4294967295
+            }, {
+                "x": 392,
+                "y": 341,
+                "v": 4294967295
+            }, {
+                "x": 393,
+                "y": 341,
+                "v": 4294967295
+            }]
+        }, {
+            id: 13, PTS: [{//  
+                "x": 390,// 注意:此处的 x, y 为 全图(默认800*800，会扩充)中的行和列，左下为(0, 0)
+                "y": 341,
+                "v": 4294967295 // 用于展示门的位置，和判断指哪点、划区的合法性
+            }, {
+                "x": 391,
+                "y": 341,
+                "v": 4294967295
+            }, {
+                "x": 392,
+                "y": 341,
+                "v": 4294967295
+            }, {
+                "x": 393,
+                "y": 341,
+                "v": 4294967295
+            }]
+        },]
+
+        return translateDataKey(mapInfo);
     } else { // 存图数据
         return null
     }
@@ -566,27 +664,39 @@ function translateRoomInfos(areas) {
         id: item.room_id ?? item.id + 2,
         neibs: item.neibs.map((neib) => parseInt(neib))
     })));
-    return areas.map((item) => ({
-        id: item.room_id ?? item.id + 2,
-        name: item.name,
-        centerX: item.centerX,
-        centerY: item.centerY,
-        neibs: item.neibs.map((neib) => parseInt(neib)),
-        type: parseInt(item.type) ?? item.type,
-        status: item.status,// // 清扫状态 0-未清扫 1- 正在清扫 2-已经清扫
-        material: item.material ?? 0,
-        color: roomColors[item.room_id ?? item.id + 2],
-        prefer: item.prefer
-    }));
+    return areas.map((item) => {
+        const point = roomToCRS([item.centerX, item.centerY]);
+        return {
+            id: item.room_id ?? item.id + 2,
+            name: item.name,
+            centerX: point.x,
+            centerY: point.y,
+            neibs: item.neibs.map((neib) => parseInt(neib)),
+            type: parseInt(item.type) ?? item.type,
+            status: item.status,// // 清扫状态 0-未清扫 1- 正在清扫 2-已经清扫
+            material: item.material ?? 0,
+            color: roomColors[item.room_id ?? item.id + 2],
+            prefer: item.prefer
+        }
+    });
 }
 
 function translateMapData(data) {
+    const position = mapToCRS([data.xMin, data.yMax])
     return !data ? null : {
         ...data,
-        sizeX: data.width, // 地图坐标系 是 x上 y 右
-        sizeY: data.height, // 
-        minX: data.xMin, // 最小 X 坐标
-        minY: data.yMax, // 最小 Y 坐标
+        sizeX: data.width,
+        sizeY: data.height,
+        minX: position.x,
+        minY: position.y,
+    }
+}
+
+function translatePosData(data) {
+    const position = roomToCRS([data.x, data.y])
+    return !data ? null : {
+        ...data,
+        ...position
     }
 }
 
@@ -602,7 +712,7 @@ function translateMapData(data) {
 //     }))
 // }
 
-function translateMapDataKey(data) {
+function translateDataKey(data) {
     return !data ? null : {
         mapId: data.mapId,
         name: data.mapName ?? "name",
@@ -613,8 +723,8 @@ function translateMapDataKey(data) {
         upload: data.upload ?? 1230674396,
         begin: data.begin ?? 1230674396,
         mapData: translateMapData(data.mapData), // 地图数据    // 地图更新, 时间戳一定也更新了, 但时间戳更新,地图不一定更新 (十几秒) // 解码: base64js.toByteArray, Lz4.uncompress.
-        chargePos: JSON.parse(data.mapData?.chargePos ?? ''), // 充电座位置
-        robotPos: data.pos, // 机器人位置
+        chargePos: translatePosData(JSON.parse(data.mapData?.chargePos ?? '')), // 充电座位置
+        robotPos: translatePosData(data.pos), // 机器人位置
         pathData: data.mapTraceData, // 轨迹数据，具体类型待定
         roomInfos: translateRoomInfos(data.areas), // 房间信息列表
         roomChain: data.roomChain, // 房间边界信息
