@@ -5,6 +5,7 @@ import base64js from 'base64-js';
 import Lz4 from './lz4Util';
 import { LatLng } from "leaflet";
 import { LatLngBounds } from "leaflet";
+import { mapToCRS } from './util_mapData';
 
 export function isNull(variable) {
 	if (variable === null || variable === undefined) {
@@ -59,6 +60,58 @@ export function getMapDataPoints(map, lz4Len) {
 		logger.e('Error in useMapPoints:', error);
 		return [];
 	}
+}
+
+export function getPathDataPoints(pix, lz4Len) {
+	try {
+		if (!lz4Len) {
+			throw new Error('getPathDataPoints pix is empty');
+		}
+		const decodedString = base64js.toByteArray(pix);
+		const data = Lz4.uncompress(decodedString, lz4Len);
+		let points = [];
+		for (let i = 0; i < data.length; i += 7) {
+			// x
+			const xLow = data[i];
+			const xHigh = data[i + 1];
+			const xCoordinate = ((xHigh << 8) | xLow);
+			// y
+			const yLow = data[i + 2];
+			const yHigh = data[i + 3];
+			const yCoordinate = ((yHigh << 8) | yLow); // 米家接口坐标系 800 -
+			// theta  (当前点跟上一个点的弧度)
+			const thetaLow = data[i + 4];
+			const thetaHigh = data[i + 5];
+			const theta = convertBackToNegative((thetaHigh << 8) | thetaLow) / 100.0;
+
+			// 隔断
+			const attr = data[i + 6];
+			// 提取隔断位（第一位）
+			const isBreak = (attr >> 7) & 0b1;
+			// 提取动作类型（第二到第五位）- 0001 弓字类型
+			const actionType = (attr >> 3) & 0b1111;
+			// 最后三位 - 工作模式 000 扫地，001 拖地，010 扫拖
+			// 0 1 2
+			const workMode = attr & 0b111;
+			points.push({ // 注意:此处的 x, y 为 全图(默认800*800，会扩充)中的行和列，左下为(0, 0)
+				x: xCoordinate,
+				y: yCoordinate,
+				tie: isBreak === 1 ? 0 : 1, //tie: 1 有效点  0 无效点
+				theta,
+				type: actionType, // 动作类型 - 1 弓字
+				mode: workMode,// 工作模式 0 扫地，1 拖地，2扫拖
+			});
+		}
+		return points;
+	} catch (error) {
+		logger.e('Error in getPathDataPoints:', error);
+		return [];
+	}
+}
+
+// 假设负数转换为 65535 的操作为溢出截断
+function convertBackToNegative(value) {
+	return (value > 32767) ? value - 65536 : value;
 }
 
 /**

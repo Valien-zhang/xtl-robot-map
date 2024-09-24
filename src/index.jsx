@@ -3,21 +3,23 @@ import L from 'leaflet';
 import {
     getCorrectBound,
     isNull,
-} from './utils/util_function';
-import { MapZIndex, MAP_COLOR } from './utils/constants';
+} from './utils/util_function.js';
+import { MapZIndex, MAP_COLOR } from './utils/constants.ts';
 import './index.less';
-import logger from './utils/logger';
-import { useIsMounted } from './hooks';
-import storage from './utils/localStorage';
-import { fetchMapImage, paresMapData } from './utils/util_mapData';
+import logger from './utils/logger.js';
+import { useIsMounted } from './hooks/index.js';
+import storage from './utils/localStorage.js';
+import { fetchMapImage, paresMapData, roomToCRS, pathToCRS } from './utils/util_mapData.js';
 // import 'leaflet-path-drag';
-import getChargeIcon from './components/chargeIcon';
-import getRobotIcon from './components/robotIcon';
-import roomInfoCard from './components/customInfoCard'
+import getChargeIcon from './components/chargeIcon/index.js';
+import getRobotIcon from './components/robotIcon/index.js';
+import roomInfoCard from './components/customInfoCard/index.js'
 
 import { MapInfo, RoomTipType, CleanModeType } from './interface.ts';
 import testData from './testData.json';
 import selectedImg from './assets/img/selected.png';
+import simplify from 'simplify-js';
+import { Bezier } from 'bezier-js';
 
 
 
@@ -28,7 +30,7 @@ import selectedImg from './assets/img/selected.png';
  * @property {Array<>} areaLayers - 划区
  * @property {Array} roomNameLayer - 房间名称
  * @property {Array} roomsLayer - 房间
- * @property {Object|null} lastPathLayer - 路径
+ * @property {L.LayerGroup|null} pathLayer - 路径
  * @property {L.Marker|null} robotMarker - 机器人
  * @property {L.Marker|null} chargeStationMarker - 充电桩
  * @property {Object|null} setArearect - 设置划区
@@ -65,6 +67,8 @@ const topRightIcon = L.icon({
     className: 'rotateIcon'
 });
 
+const PATH_WEIGHT_LIMIT = 0.5; // 路径最小线宽
+
 
 const MapView = (props) => {
     const {
@@ -80,7 +84,7 @@ const MapView = (props) => {
             isShowCurPosRing = false, // 是否显示机器人当前位置
             isShowBaseRing = false, // 是否显示基站ring
 
-            isShowTrace = false, // 是否显示轨迹
+            isShowPath = true, // 是否显示轨迹
             isShowAreaTips = false, // 是否显示房间标记
             roomTipType = RoomTipType.IconName, // 房间标记类型
 
@@ -101,6 +105,7 @@ const MapView = (props) => {
     /** 图层引用 */
     /** @type {React.MutableRefObject<L.Map>} */
     const mapRef = useRef(null);
+
     /** @type {React.MutableRefObject<LayersRefType>} */
     const layersRef = useRef({
         mapLayer: null,//
@@ -110,7 +115,7 @@ const MapView = (props) => {
         roomNameLayer: [], // 房间名称
         roomsLayer: [], // 房间框
 
-        lastPathLayer: null, // 路径
+        pathLayer: null, // 路径
         robotMarker: null, // 机器人
         chargeStationMarker: null, // 充电桩
         setArearect: null, // 设置划区
@@ -128,6 +133,13 @@ const MapView = (props) => {
     /** @type {React.MutableRefObject<MapInfo>} */
     const mapModel = useRef(null);
 
+    // 路径
+    const mapPathArrayRef = useRef([]);
+    const lastMapPathArrayIndexRef = useRef(-1);  // 保存上一次处理的索引
+
+    // 当前的地图缩放等级, 偏移量
+    const mapTransRef = useRef({ offsetX: 0, offsetY: 0, scale: 1 });
+
     /** @type {React.MutableRefObject} */
     const lastMapModel = useRef(null);
 
@@ -136,6 +148,7 @@ const MapView = (props) => {
 
     /** @type {React.MutableRefObject<string>} 内存缓存 */
     const mapBase64Image = useRef('');
+
     // 所有记录的数据坐标以leaflet 坐标系为准.
     /** @type {React.MutableRefObject} 地图图层有效范围 */
     const mapValidRectRef = useRef({});
@@ -151,6 +164,7 @@ const MapView = (props) => {
 
     const isUnmount = !useIsMounted();// 已挂载
 
+
     // 初始化 
     useEffect(() => {
         mapRef.current = L.map('map', {
@@ -158,11 +172,12 @@ const MapView = (props) => {
             zoomControl: false,
             attributionControl: false,
             zoomSnap: 0.01,
-            zoom: -1,//mapZoonRectRef.current.default,
-            minZoom: -1,//mapZoonRectRef.current.min,
-            maxZoom: 2,//mapZoonRectRef.current.max,
+            zoom: mapZoonRectRef.current.default,
+            minZoom: mapZoonRectRef.current.min,
+            maxZoom: mapZoonRectRef.current.max,
             crs: L.CRS.Simple,// 
-            editable: true,
+            // editable: true,
+            inertia: false,
             touchZoom: 'center',
             bounceAtZoomLimits: false,
             debounceMoveend: false,
@@ -241,13 +256,13 @@ const MapView = (props) => {
 
         drawRobot(robotPos);
 
-        // drawPath();
+        drawPath(pathData);
 
         logger.d('地图绘制完成')
 
         fitMapBounds();
 
-    }, [drawCharge, drawMapGround, drawRobot, fitMapBounds, handleRoom, isUnmount])
+    }, [drawCharge, drawMapGround, drawPath, drawRobot, fitMapBounds, handleRoom, isUnmount])
 
     // 地图
     const drawMapGround = useCallback(async (newMapInfo) => {
@@ -357,13 +372,13 @@ const MapView = (props) => {
             // // 地图有效区的四个顶点
             // L.marker(leftTop, { icon: redIcon, pane: 'overlayPane' }).addTo(mapRef.current);
             L.circle(leftTop, {
-                color: "#FF0000", fillColor: '#FF0000', fillOpacity: 1, radius: 10  // 将 L.circle 渲染到 markerPane 上
+                color: "#FF0000", fillColor: '#FF0000', fillOpacity: 1, radius: 1
             }).addTo(mapRef.current);
-            L.circle(leftBottom, { color: "#00FF00", fillColor: '#00FF00', fillOpacity: 1, radius: 10 }).addTo(mapRef.current);
-            L.circle(rightBottom, { color: "#0000FF", fillColor: '#0000FF', fillOpacity: 1, radius: 10 }).addTo(mapRef.current);
-            L.circle(rightTop, { color: "#0000FF", fillColor: '#0000FF', fillOpacity: 1, radius: 10 }).addTo(mapRef.current);
-            // 中心
-            const centerLayer = L.circle(centerP, { color: "#000000", fillColor: '#FF0000', fillOpacity: 1, radius: 10 }).addTo(mapRef.current);
+            L.circle(leftBottom, { color: "#00FF00", fillColor: '#00FF00', fillOpacity: 1, radius: 1 }).addTo(mapRef.current);
+            L.circle(rightBottom, { color: "#0000FF", fillColor: '#0000FF', fillOpacity: 1, radius: 1 }).addTo(mapRef.current);
+            L.circle(rightTop, { color: "#0000FF", fillColor: '#0000FF', fillOpacity: 1, radius: 1 }).addTo(mapRef.current);
+            // // 中心
+            const centerLayer = L.circle(centerP, { color: "#000000", fillColor: '#FF0000', fillOpacity: 1, radius: 1 }).addTo(mapRef.current);
 
             logger.d('centerLayer getBounds', centerLayer.getBounds());
 
@@ -373,26 +388,24 @@ const MapView = (props) => {
     }
 
     const fitMapBounds = useCallback(() => {
-        logger.d('mapLayer getBounds', layersRef.current.mapLayer.getBounds());
-        logger.d('mapLayer getBounds', layersRef.current.chargeStationMarker.getLatLng());
+        if (mapValidRectRef.current.centerP) { // 有地图位置
+            // 更新 画布位置和缩放 适应 fitbounds
+            if (layersRef.current.mapLayer) {
+                let corretBounds = getCorrectBound(mapZoonRectRef.current, layersRef.current.mapLayer.getBounds());
+                // mapRef.current.fitBounds(corretBounds);
+                calculateMinMaxScale();
+                logger.d(`fitMapBounds--->适应地图,更新画布缩放`, corretBounds);
 
-        // if (mapValidRectRef.current.centerP) { // 有地图位置
-        //     // 更新 画布位置和缩放 适应 fitbounds
-        //     if (layersRef.current.mapLayer) {
-        //         let corretBounds = getCorrectBound(mapZoonRectRef.current, layersRef.current.mapLayer.getBounds());
-        //         mapRef.current.fitBounds(corretBounds);
-        //         calculateMinMaxScale();
-        //         logger.d(`fitMapBounds--->适应地图,更新画布缩放`, corretBounds);
-
-        //     } else {// 无图
-        //         logger.d(`fitMapBounds--->默认位置`);
-        //         mapRef.current.setView(mapValidRectRef.current.centerP, mapZoonRectRef.current.default, { animate: false });
-        //     }
-        // } else { // 默认居中
-        //     logger.d(`fitMapBounds---> setView 默认位置`);
-        //     mapRef.current.setView(L.latLng(400, 400));
-        // }
+            } else {// 无图
+                logger.d(`fitMapBounds--->默认位置`);
+                mapRef.current.setView(mapValidRectRef.current.centerP, mapZoonRectRef.current.default, { animate: false });
+            }
+        } else { // 默认居中
+            logger.d(`fitMapBounds---> setView 默认位置`);
+            mapRef.current.setView(L.latLng(400, 400));
+        }
     }, [])
+
     // 房间
     const handleRoom = useCallback((roomInfos, roomChain) => {
         if (!isShowAreaTips || isNull(roomChain) || isNull(roomInfos)) return;
@@ -501,7 +514,7 @@ const MapView = (props) => {
             iconRect = L.marker(poistion, {
                 attribution: `${info.id}+iconRect`,
                 icon: icon,
-                zIndex: MapZIndex.iconName,
+                zIndexOffset: MapZIndex.iconName,
                 pane: `roomNameSelected${info.id}`
             });
 
@@ -516,7 +529,7 @@ const MapView = (props) => {
             iconRect = L.marker(poistion, {
                 attribution: `${info.id}+iconRect`,//  用于标记标记信息
                 icon: icon,
-                zIndex: MapZIndex.setArearect,
+                zIndexOffset: MapZIndex.setArearect,
             });
         }
 
@@ -548,22 +561,23 @@ const MapView = (props) => {
         return null;
     }, [selectedRooms]);
 
-
     // 基站
     const drawCharge = useCallback((chargePos) => {
         if (!isShowBaseRing || !chargePos) return;
         // 绘制
-        const makerPoint = L.latLng(chargePos.y, chargePos.x);
+        const makerPoint = mapValidRectRef.current.centerP;
         let stationIcon = L.divIcon({
             html: getChargeIcon(chargePos.a),
-            iconSize: [24, 30],
+            iconSize: [22, 22],
             fillOpacity: 1,
+            iconAnchor: [11, 11]
         });
         // 有旧的先移除
         if (layersRef.current.chargeStationMarker) {
             layersRef.current.chargeStationMarker.remove();
         }
-        layersRef.current.chargeStationMarker = L.marker(makerPoint, { icon: stationIcon, zIndex: MapZIndex.chareBase })
+        logger.d(`基站位置: `, makerPoint);
+        layersRef.current.chargeStationMarker = L.marker(makerPoint, { icon: stationIcon, zIndexOffset: MapZIndex.chareBase })
             .addTo(mapRef.current);
 
 
@@ -576,15 +590,16 @@ const MapView = (props) => {
         const makerPoint = L.latLng(robotPos.y, robotPos.x);
         let robotIcon = L.divIcon({
             html: getRobotIcon(robotPos.a),
-            iconSize: [24, 30],
+            iconSize: [22, 22],
             fillOpacity: 1,
+            iconAnchor: [11, 11]
         });
         // 有旧的先移除
         if (layersRef.current.robotMarker) {
             layersRef.current.robotMarker.remove();
         }
         logger.d(`机器人位置: `, makerPoint);
-        layersRef.current.robotMarker = L.marker(makerPoint, { icon: robotIcon, zIndex: MapZIndex.robot })
+        layersRef.current.robotMarker = L.marker(makerPoint, { icon: robotIcon, zIndexOffset: MapZIndex.robot })
             .addTo(mapRef.current);
     }, [isShowCurPosRing]);
 
@@ -593,12 +608,157 @@ const MapView = (props) => {
     }, []);
 
     // 路径
-    const drawPath = useCallback(() => {
-    }, []);
+    const drawPath = useCallback((pathData) => {
+        if (!isShowPath || !pathData) return;
+
+        logger.d(`pathData: `, pathData);
+        // if (isFit) {
+        //     logger.d(`9999999-地图有变化, 轨迹缓存清空`);
+        //     mapPathArray = [];
+        //     lastMapPathArrayIndex = -1;  // 保存上一次处理的索引
+        // }
+
+        const data = pathData;
+
+
+
+        let arr = [];
+        let testArr = [];
+        let curArrIndex = 0
+
+        if (data.length > 0) {
+            for (let i = 0; i < data.length; i++) {
+                //连续tie为1的点组成一条路径，tie为0的无效点，舍弃，并且前后两条路径不需要连接
+                //判断当前点，前一个点，后一个点的tie是否为1，是1的话绘制，不是则舍弃
+                if (i === 0 && data[i] && data[i].tie === 1 && data[i + 1] && data[i + 1].tie === 1) {
+                    arr.push(data[i]);
+                } else if (i > 0 && data[i] && data[i + 1] && data[i - 1] && data[i].tie === 1 && (data[i + 1].tie === 1 || data[i - 1].tie === 1)) {
+                    arr.push(data[i]);
+                } else {
+                    if (arr.length > 0) { // 处理一段轨迹 
+
+                        // 只处理新增数据的轨迹
+                        if (curArrIndex >= lastMapPathArrayIndexRef.current) {
+                            let lastType = -1;
+                            let m_AllTrackedPoseOutput = [];
+                            const m_DPTrackedPose = [];
+                            const m_GZTrackedPose = [];
+                            for (let j = 0; j < arr.length; j++) {
+                                let point = arr[j];
+                                if (point.type === 1) { // 弓字
+                                    if (lastType !== point.type && m_DPTrackedPose.length > 0) {
+                                        // 普通轨迹处理 - > 去毛刺
+                                        m_AllTrackedPoseOutput = m_AllTrackedPoseOutput.concat(handleNormalPath(m_DPTrackedPose));// 
+                                        m_DPTrackedPose.length = 0;
+                                    }
+                                    m_GZTrackedPose.push(point);
+                                } else {  // 非弓
+                                    if (lastType !== point.type && m_GZTrackedPose.length > 0) {
+                                        // 上一个点不是非弓, 那么先处理这一段弓字轨迹,
+                                        m_AllTrackedPoseOutput = m_AllTrackedPoseOutput.concat(handleGZPath(m_GZTrackedPose));
+                                        m_GZTrackedPose.length = 0;
+                                    }
+                                    m_DPTrackedPose.push(point);
+                                }
+                                lastType = point.type;
+                            }
+                            // 剩最后一段数据处理
+                            if (m_DPTrackedPose.length > 0) {
+                                m_AllTrackedPoseOutput = m_AllTrackedPoseOutput.concat(handleNormalPath(m_DPTrackedPose));// 
+                                m_DPTrackedPose.length = 0;//清空已处理普通轨迹
+                            }
+                            if (m_GZTrackedPose.length > 0) {
+                                m_AllTrackedPoseOutput = m_AllTrackedPoseOutput.concat(handleGZPath(m_GZTrackedPose));
+                                m_GZTrackedPose.length = 0;//清空已处理弓字轨迹
+                            }
+
+                            if (m_AllTrackedPoseOutput.length) {
+                                if (curArrIndex === lastMapPathArrayIndexRef.current) { // 可能最后一段轨迹一直在更新,但没有分段,只更新最后一段轨迹
+                                    mapPathArrayRef.current[curArrIndex] = [...m_AllTrackedPoseOutput];
+                                    // logger.d(`Jack--55555--->最后段---> ${JSON.stringify(m_AllTrackedPoseOutput)}`);
+
+                                } else { // 新的分段
+                                    mapPathArrayRef.current.push([...m_AllTrackedPoseOutput])
+                                    // logger.d(`Jack--55555--->新的分段---> ${JSON.stringify(m_AllTrackedPoseOutput)}`);
+                                }
+                                m_AllTrackedPoseOutput.length = 0;
+                                // 标记已处理的轨迹下标
+                                lastMapPathArrayIndexRef.current = mapPathArrayRef.current.length - 1;
+                            }
+                        }
+
+                        curArrIndex++;
+                        arr = [];
+                        testArr = [];
+                    }
+                }
+            }
+        }
+
+
+        // 有旧的先移除
+        if (layersRef.current.pathLayer) {
+            layersRef.current.robotMarker.remove();
+        }
+        layersRef.current.pathLayer = L.layerGroup({ zIndex: MapZIndex.path }).addTo(mapRef.current);
+        if (mapPathArrayRef.current.length > 0) { // 画路径
+            mapPathArrayRef.current.forEach((pathArr) => {
+                pathArr = pathArr.map((point) => {
+                    const data = pathToCRS([point.x, point.y,])
+                    return [data.y, data.x,]; // mapToCRS
+                })
+                // logger.d(`Jack--55555--->pathArr---> ${JSON.stringify(pathArr)}`);
+                const path = L.polyline(pathArr, {
+                    color: MAP_COLOR.path,
+                    weight: mapTransRef.current.scale < PATH_WEIGHT_LIMIT ? PATH_WEIGHT_LIMIT : mapTransRef.current.scale,
+                    smoothFactor: 0,
+                });
+                layersRef.current.pathLayer.addLayer(path);
+            })
+        }
+    }, [isShowPath]);
+
+    function handleNormalPath(points) {
+        try {
+            if (points.length < 4) {
+                throw new Error('handleDPTrack - points.length < 5');
+            }
+            // 抽稀 - 去毛刺
+            const simplifiedLine = simplify(points,
+                0.8, // 0.01 越高的值会使线条越简化
+                false// true 精度更高,计算更多
+            );
+            // 增加角度
+            const curve = new Bezier(simplifiedLine);// points
+            const smoothPoints = curve.getLUT(simplifiedLine.length * 2);
+            return smoothPoints;
+        } catch (error) {
+            logger.d(`Jack--55555--->handleNormalPath---> 错误: ${error}`);
+
+            return points;
+        }
+    }
+
+    function handleGZPath(points) {
+        try {
+            if (points.length < 4) {
+                throw new Error('handleDPTrack - points.length < 5');
+            }
+            const data = simplify(points,
+                0.1, // 0.01 越高的值会使线条越简化
+                false// true 精度更高,计算更多
+            );
+            // logger.d(`Jack--55555--->handleGZPath---> `, JSON.stringify(data));
+            return data;
+        } catch (error) {
+            return points;
+        }
+    }
+
 
     return (
         <div className="mapBox">
-            <div id="map" style={{ width: '100%', height: '100%', left: 0, top: 0 }} />
+            <div id="map" style={{ width: '100%', height: '100%', position: 'absolute' }} />
         </div>
     );
 

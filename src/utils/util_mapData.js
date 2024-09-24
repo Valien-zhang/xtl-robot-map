@@ -2,12 +2,10 @@ import logger from './logger';
 import _ from 'lodash';
 import storage from './localStorage';
 import { SMapColorConfig } from './constants';
-import { getMapDataPoints, perfectMapData, Uint8ToPNGBase64 } from './util_function';
+import { getMapDataPoints, getPathDataPoints, perfectMapData, Uint8ToPNGBase64 } from './util_function';
 import { isNull, generateMd5Key } from "./util_function";
 /**
  *  地图数据的坐标 x上y右 转换为 笛卡尔坐标 y上 x右 
- *                  
- *                  
  *                  
  * x                 
  * |                |y
@@ -17,9 +15,8 @@ import { isNull, generateMd5Key } from "./util_function";
  * @param {[number, number]} param0 
  * @returns {{x:number, y:number}} 笛卡尔坐标系下的xy
  */
-function mapToCRS([ox, oy]) {
+export function mapToCRS([ox, oy]) {
     return { x: oy, y: ox };
-    // return { x: ox, y: oy };
 }
 
 /**
@@ -32,20 +29,26 @@ function CRSToMap([ox, oy]) {
 }
 
 /**
- * 非地图数据的坐标 ,京蛙传过来是屏幕坐标系-
- *                 
- * |----------x    |y
- * |               |
- * |               |
- * |y           => |--------x
+ * 房间信息坐标 
  * @param {[number, number]} ox oy 房间坐标系下的xy
  * @param {number} size 地图的size，default is 800
  * @returns {{x:number, y:number}} 笛卡尔坐标系下的xy
  */
-function roomToCRS([ox, oy], size = 800) {
+export function roomToCRS([ox, oy], size = 800) {
     // return { x: Number(ox), y: size - Number(oy) };
     return { x: Number(oy), y: size - Number(ox) };
     // return { x: Number(oy), y: Number(ox) + size };
+}
+/**
+* 其余数据的坐标 ,京蛙传过来是屏幕坐标系
+*                 
+* |----------x    |y
+* |               |
+* |               |
+* |y           => |--------x
+*/
+export function pathToCRS([ox, oy], size = 800) {
+    return { x: Number(ox), y: size - Number(oy) };
 }
 
 /**
@@ -71,31 +74,6 @@ function CRSToRoom([ox, oy], size = 800) {
 export function isMapEmpty(mapData) {
     return false;
 }
-
-/**
- * 根据地图数据, 生成配色
- * @param {*} areas 
- * @returns 
- */
-// const colorMapping = (areas) => {
-//     const transformedColorMapping = {};
-//     if (areas.length <= 4) { // 小于4个图形 或未保存图, 直接配色
-//         areas.forEach((item, index) => {
-//             const roomId = item.room_id ?? (item.id + 2);
-//             const key = `${roomId}`;
-//             transformedColorMapping[key] = SMapColorConfig.roomColors[index % 4];
-//         });
-//     } else { // 多于4个图形, 使用四色定理配色
-//         const graph = colorGraph(areas.map((item) => ({
-//             [item.room_id ?? (item.id + 2)]: (item.neibs ?? [])
-//         })));
-//         logger.d('配色:', graph);
-//         Object.entries(graph).forEach(([key, value]) => {
-//             transformedColorMapping[key] = SMapColorConfig.roomColors[value];
-//         });
-//     }
-//     return transformedColorMapping;
-// };
 
 export async function fetchMapImage({ perfectScale, mapId, map, lz4Len, minX, minY, sizeX, sizeY, roomInfos }) {
 
@@ -174,21 +152,21 @@ const getMapImage = async (sizeX, sizeY, mapPoints, mapColor, cacheKey, mapPerfe
 async function mapToImage(sizeX, sizeY, mapPoints, mapColor, mapPerfectScale) {
     var rgbaArrayT = new Array(sizeX * sizeY * 4);
 
-    for (let x = 0; x < sizeX; x++) {
-        for (let y = 0; y < sizeY; y++) {
-            let ind = x + y * sizeX;
-            let value = mapPoints[ind] ?? 0;
-            setRGBA(rgbaArrayT, ind, mapColor[value]);
-        }
-    }
-    // for (let y = 0; y < sizeY; y++) { // 从顶部到底部遍历每一行
-    //     // 在每一行中从左到右遍历每一个像素  
-    //     for (let x = 0; x < sizeX; x++) {
+    // for (let x = 0; x < sizeX; x++) {
+    //     for (let y = 0; y < sizeY; y++) {
     //         let ind = x + y * sizeX;
-    //         let value = mapPoints[ind] ?? 0; // 根据mapPoints获取当前像素的值  
-    //         setRGBA(rgbaArrayT, (sizeY - y - 1) * sizeX + x, mapColor[value]); // 计算上下翻转后的索引，填充数组
+    //         let value = mapPoints[ind] ?? 0;
+    //         setRGBA(rgbaArrayT, ind, mapColor[value]);
     //     }
     // }
+    for (let y = 0; y < sizeY; y++) { // 从顶部到底部遍历每一行
+        // 在每一行中从左到右遍历每一个像素  
+        for (let x = 0; x < sizeX; x++) {
+            let ind = x + y * sizeX;
+            let value = mapPoints[ind] ?? 0; // 根据mapPoints获取当前像素的值  
+            setRGBA(rgbaArrayT, (sizeY - y - 1) * sizeX + x, mapColor[value]); // 计算上下翻转后的索引，填充数组
+        }
+    }
 
     let base64 = '';
     try {
@@ -265,13 +243,12 @@ export function paresMapData(data) {
         const mapInfo = {
             ts: new Date().getTime(),
             mapId: '',
-            /** @type {IMapData} 全量地图 */
+            /**全量地图 */
             mapData: {},
-            /** @type {IMapTraceData} 轨迹 */
+            /** 轨迹 */
             mapTraceData: {},
             pos: {},
             areas: [],
-            /** @type {IVirtualModel[]} */
             virtualWalls: [],
             // '1,1,300,300,400,400',
             // 1,1,x1,y1,x2,y2;2,2,x1,y1,x2,y2,x3,y3,x4,y4 每条虚拟墙(区)用分号分割，
@@ -693,11 +670,20 @@ function translateMapData(data) {
 }
 
 function translatePosData(data) {
-    const position = roomToCRS([data.x, data.y])
+    const position = pathToCRS([data.x, data.y])
     return !data ? null : {
         ...data,
         ...position
     }
+}
+
+function translatePathData(data) {
+    const { traceId, trace, totalCount, lz4Len } = data || {};
+    if (!data || !trace || !lz4Len) {
+        return [];
+    }
+    const poinst = getPathDataPoints(trace, lz4Len)
+    return poinst
 }
 
 // function translatePathData(data) {
@@ -725,7 +711,7 @@ function translateDataKey(data) {
         mapData: translateMapData(data.mapData), // 地图数据    // 地图更新, 时间戳一定也更新了, 但时间戳更新,地图不一定更新 (十几秒) // 解码: base64js.toByteArray, Lz4.uncompress.
         chargePos: translatePosData(JSON.parse(data.mapData?.chargePos ?? '')), // 充电座位置
         robotPos: translatePosData(data.pos), // 机器人位置
-        pathData: data.mapTraceData, // 轨迹数据，具体类型待定
+        pathData: translatePathData(data.mapTraceData), // 轨迹数据，具体类型待定
         roomInfos: translateRoomInfos(data.areas), // 房间信息列表
         roomChain: data.roomChain, // 房间边界信息
         virtualAreas: [...data.virtualWalls, ...data.mopWalls, ...data.carpet, ...data.thres], // 虚拟列表

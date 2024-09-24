@@ -53,9 +53,9 @@ export default {
         }),
         typescript({ tsconfig: './tsconfig.json' }),
         postcss({
-            extensions: ['.less'],
+            extensions: ['.less',], // 支持 .less 文件
             use: [
-                ['less', { javascriptEnabled: true }],
+                ['less', { javascriptEnabled: true }], // 配置 Less
             ],
         }),
         del({ targets: 'dist/*', verbose: true }),
